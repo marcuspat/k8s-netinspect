@@ -173,10 +173,10 @@ This tool has been **extensively tested** and validated against real Kubernetes 
 
 For complete proof that this tool works, see our comprehensive test documentation:
 
-- **[COMPREHENSIVE_TEST_EVIDENCE.md](./COMPREHENSIVE_TEST_EVIDENCE.md)** - Complete testing against real K3s cluster with all command outputs
-- **[COMPLETE_CLI_TEST_RESULTS.md](./COMPLETE_CLI_TEST_RESULTS.md)** - 100% CLI option coverage testing (11/11 options verified)
-- **[FINAL_TEST_REPORT.md](./FINAL_TEST_REPORT.md)** - Production readiness assessment with 100% success rate
-- **[TESTING.md](./TESTING.md)** - Step-by-step testing guide for users
+- **[LIVE_CLUSTER_TEST_EVIDENCE.md](./LIVE_CLUSTER_TEST_EVIDENCE.md)** - Complete testing against real k3s cluster with 17 pods across 5 namespaces
+- **[FINAL_DEMONSTRATION.md](./FINAL_DEMONSTRATION.md)** - Complete project summary with production readiness evidence
+- **[live-cluster-test.sh](./live-cluster-test.sh)** - Comprehensive testing script for live clusters
+- **[test-comprehensive.sh](./test-comprehensive.sh)** - Build validation, unit tests, and benchmarking script
 
 #### 🧪 Quick Test
 
@@ -192,6 +192,18 @@ cargo build --release
 ./target/release/k8s-netinspect --version
 ./target/release/k8s-netinspect diagnose
 ./target/release/k8s-netinspect diagnose --namespace kube-system
+```
+
+#### 🚀 Run Comprehensive Tests
+
+Test against your own cluster with our testing framework:
+
+```bash
+# Run comprehensive testing suite
+./test-comprehensive.sh
+
+# Test against live cluster (requires cluster access)
+./live-cluster-test.sh
 ```
 
 **Expected Output:**
@@ -247,7 +259,7 @@ kubectl auth can-i get namespaces
 - Tool still detects CNI and provides useful information
 - Retry or use different network settings
 
-See **[ERROR_CODES.md](./ERROR_CODES.md)** for complete troubleshooting guide with detailed solutions.
+See **[LIVE_CLUSTER_TEST_EVIDENCE.md](./LIVE_CLUSTER_TEST_EVIDENCE.md)** for complete troubleshooting guide and real cluster testing evidence.
 
 ## 🎯 What Users Are Saying
 
