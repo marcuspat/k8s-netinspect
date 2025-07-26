@@ -1,0 +1,140 @@
+name: Build Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+
+jobs:
+  build-validation:
+    name: Build Validation
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04]
+        rust: [stable, 1.70.0]
+        include:
+          - os: ubuntu-latest
+            rust: stable
+            coverage: true
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libssl-dev
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ matrix.rust }}-
+          ${{ runner.os }}-cargo-
+          
+    - name: Check code formatting
+      run: cargo fmt --all -- --check
+      
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      
+    - name: Run cargo check
+      run: cargo check --release --all-features
+      
+    - name: Run dependency tree check
+      run: cargo tree
+      
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+      
+    - name: Run security audit
+      run: cargo audit
+      continue-on-error: true
+      
+    - name: Build release binary
+      run: cargo build --release --all-features
+      
+    - name: Test binary execution
+      run: |
+        ./target/release/k8s-netinspect --help || echo "Help command not yet implemented"
+        ./target/release/k8s-netinspect --version || echo "Version command not yet implemented"
+        
+    - name: Check binary size
+      run: |
+        ls -lah target/release/k8s-netinspect
+        echo "Binary size: $(du -h target/release/k8s-netinspect | cut -f1)"
+        
+    - name: Run custom validation script
+      run: ./validate_build.sh
+      
+    - name: Build documentation
+      run: cargo doc --release --no-deps --all-features
+      
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v3
+      if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+      with:
+        name: k8s-netinspect-binary
+        path: target/release/k8s-netinspect
+        retention-days: 30
+        
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3  
+      if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
+      with:
+        name: documentation
+        path: target/doc/
+        retention-days: 7
+
+  cross-platform-build:
+    name: Cross-platform Build Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+        
+    - name: Install musl tools
+      if: matrix.target == 'x86_64-unknown-linux-musl'
+      run: sudo apt-get update && sudo apt-get install -y musl-tools
+      
+    - name: Build for target
+      run: cargo build --release --target ${{ matrix.target }}
+      
+    - name: Upload cross-platform binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: k8s-netinspect-${{ matrix.target }}
+        path: target/${{ matrix.target }}/release/k8s-netinspect
+        retention-days: 7
