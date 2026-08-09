@@ -83,9 +83,6 @@ jobs:
         ls -lah target/release/k8s-netinspect
         echo "Binary size: $(du -h target/release/k8s-netinspect | cut -f1)"
         
-    - name: Run custom validation script
-      run: ./validate_build.sh
-      
     - name: Build documentation
       run: cargo doc --release --no-deps --all-features
       

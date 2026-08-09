@@ -171,10 +171,8 @@ This tool has been **extensively tested** and validated against real Kubernetes 
 
 #### 🎯 Validation Evidence
 
-For complete proof that this tool works, see our comprehensive test documentation:
+Test scripts included in this repository:
 
-- **[LIVE_CLUSTER_TEST_EVIDENCE.md](./LIVE_CLUSTER_TEST_EVIDENCE.md)** - Complete testing against real k3s cluster with 17 pods across 5 namespaces
-- **[FINAL_DEMONSTRATION.md](./FINAL_DEMONSTRATION.md)** - Complete project summary with production readiness evidence
 - **[live-cluster-test.sh](./live-cluster-test.sh)** - Comprehensive testing script for live clusters
 - **[test-comprehensive.sh](./test-comprehensive.sh)** - Build validation, unit tests, and benchmarking script
 
@@ -258,16 +256,6 @@ kubectl auth can-i get namespaces
 - Expected in some container environments (Codespaces, etc.)
 - Tool still detects CNI and provides useful information
 - Retry or use different network settings
-
-See **[LIVE_CLUSTER_TEST_EVIDENCE.md](./LIVE_CLUSTER_TEST_EVIDENCE.md)** for complete troubleshooting guide and real cluster testing evidence.
-
-## 🎯 What Users Are Saying
-
-*"Simple, fast, and actually works. Finally a tool that just tells me what I need to know about my cluster's networking!"*
-
-*"The CNI detection saved me hours of debugging. Wish I had this tool earlier."*
-
-*"Professional output and helpful error messages. This is how CLI tools should be built."*
 
 ## 🤝 Contributing
 
