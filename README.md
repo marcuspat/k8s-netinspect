@@ -2,6 +2,13 @@
 
 A minimal Kubernetes network inspection tool for diagnosing CNI and pod connectivity.
 
+## Demo
+
+![k8s-netinspect version check, diagnose, and help output](k8s-netinspect-demo.gif)
+
+*Recorded from the actual binary with [asciinema](https://asciinema.org) + [agg](https://github.com/asciinema/agg).*
+
+
 ## Features
 
 - CNI detection (Calico, Flannel, Weave, Cilium)
