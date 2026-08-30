@@ -5,7 +5,6 @@ mod commands;
 mod errors;
 mod validation;
 
-use errors::NetInspectError;
 use validation::Validator;
 
 #[derive(Parser)]
@@ -41,13 +40,13 @@ enum Commands {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    
+
     // Validate environment before executing commands
     if let Err(e) = Validator::validate_environment() {
         eprintln!("{}", e.detailed_message());
         process::exit(e.exit_code());
     }
-    
+
     let result = match &cli.command {
         Commands::Diagnose { namespace } => {
             if let Err(e) = Validator::validate_kubernetes_access().await {
@@ -66,7 +65,7 @@ async fn main() {
                     commands::diagnose(None).await
                 }
             }
-        },
+        }
         Commands::TestPod { pod, namespace } => {
             // Validate inputs
             if let Err(e) = Validator::validate_pod_name(pod) {
@@ -78,13 +77,13 @@ async fn main() {
             } else {
                 commands::test_pod(pod, namespace).await
             }
-        },
+        }
         Commands::Version => {
             commands::version();
             Ok(())
         }
     };
-    
+
     match result {
         Ok(()) => process::exit(0),
         Err(e) => {
