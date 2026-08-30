@@ -165,12 +165,12 @@ cargo build --release
 
 ## 🧪 Testing & Validation
 
-### ✅ Thoroughly Tested & Production Ready
+### Validation
 
-This tool has been **extensively tested** and validated against real Kubernetes clusters:
+This tool has been tested against real Kubernetes clusters:
 
 #### 📊 Test Results Summary
-- **✅ 100% CLI Coverage** - All commands and flags tested
+- **CLI commands manually verified** - diagnose, test-pod, version, and help all exercised against a live cluster
 - **✅ Real Cluster Validation** - Tested against live K3s clusters  
 - **✅ CNI Detection Verified** - Confirmed working with Flannel, Calico
 - **✅ Error Handling Validated** - Professional error messages with troubleshooting
