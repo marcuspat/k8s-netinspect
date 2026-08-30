@@ -1,5 +1,5 @@
-use std::fmt;
 use colored::*;
+use std::fmt;
 
 /// Custom error types for k8s-netinspect with specific error codes
 #[derive(Debug)]
@@ -145,37 +145,31 @@ impl NetInspectError {
 impl From<kube::Error> for NetInspectError {
     fn from(err: kube::Error) -> Self {
         match err {
-            kube::Error::Api(api_err) => {
-                match api_err.code {
-                    401 | 403 => NetInspectError::PermissionDenied(
-                        format!("Kubernetes API access denied: {}", api_err.message)
-                    ),
-                    404 => NetInspectError::ResourceNotFound(
-                        format!("Resource not found: {}", api_err.message)
-                    ),
-                    _ => NetInspectError::KubernetesConnection(
-                        format!("Kubernetes API error: {}", api_err.message)
-                    ),
-                }
-            }
-            kube::Error::HttpError(http_err) => {
-                NetInspectError::KubernetesConnection(
-                    format!("HTTP error connecting to Kubernetes: {}", http_err)
-                )
-            }
+            kube::Error::Api(api_err) => match api_err.code {
+                401 | 403 => NetInspectError::PermissionDenied(format!(
+                    "Kubernetes API access denied: {}",
+                    api_err.message
+                )),
+                404 => NetInspectError::ResourceNotFound(format!(
+                    "Resource not found: {}",
+                    api_err.message
+                )),
+                _ => NetInspectError::KubernetesConnection(format!(
+                    "Kubernetes API error: {}",
+                    api_err.message
+                )),
+            },
+            kube::Error::HttpError(http_err) => NetInspectError::KubernetesConnection(format!(
+                "HTTP error connecting to Kubernetes: {}",
+                http_err
+            )),
             kube::Error::Auth(auth_err) => {
-                NetInspectError::PermissionDenied(
-                    format!("Authentication failed: {}", auth_err)
-                )
+                NetInspectError::PermissionDenied(format!("Authentication failed: {}", auth_err))
             }
-            kube::Error::Discovery(discovery_err) => {
-                NetInspectError::KubernetesConnection(
-                    format!("Service discovery failed: {}", discovery_err)
-                )
-            }
-            _ => NetInspectError::KubernetesConnection(
-                format!("Kubernetes client error: {}", err)
+            kube::Error::Discovery(discovery_err) => NetInspectError::KubernetesConnection(
+                format!("Service discovery failed: {}", discovery_err),
             ),
+            _ => NetInspectError::KubernetesConnection(format!("Kubernetes client error: {}", err)),
         }
     }
 }
@@ -184,17 +178,11 @@ impl From<kube::Error> for NetInspectError {
 impl From<reqwest::Error> for NetInspectError {
     fn from(err: reqwest::Error) -> Self {
         if err.is_timeout() {
-            NetInspectError::Timeout(
-                "HTTP request timed out - pod may be unreachable".to_string()
-            )
+            NetInspectError::Timeout("HTTP request timed out - pod may be unreachable".to_string())
         } else if err.is_connect() {
-            NetInspectError::NetworkConnectivity(
-                format!("Failed to connect to pod: {}", err)
-            )
+            NetInspectError::NetworkConnectivity(format!("Failed to connect to pod: {}", err))
         } else {
-            NetInspectError::NetworkConnectivity(
-                format!("HTTP request failed: {}", err)
-            )
+            NetInspectError::NetworkConnectivity(format!("HTTP request failed: {}", err))
         }
     }
 }
