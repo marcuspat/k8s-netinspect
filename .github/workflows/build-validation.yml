@@ -87,7 +87,7 @@ jobs:
       run: cargo doc --release --no-deps --all-features
       
     - name: Upload binary artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
       with:
         name: k8s-netinspect-binary
@@ -95,7 +95,7 @@ jobs:
         retention-days: 30
         
     - name: Upload documentation
-      uses: actions/upload-artifact@v3  
+      uses: actions/upload-artifact@v4
       if: matrix.os == 'ubuntu-latest' && matrix.rust == 'stable'
       with:
         name: documentation
@@ -130,7 +130,7 @@ jobs:
       run: cargo build --release --target ${{ matrix.target }}
       
     - name: Upload cross-platform binary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: k8s-netinspect-${{ matrix.target }}
         path: target/${{ matrix.target }}/release/k8s-netinspect
