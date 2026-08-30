@@ -120,8 +120,6 @@ impl Validator {
 
     /// Validate that required tools/permissions are available with comprehensive RBAC checks
     pub async fn validate_kubernetes_access() -> NetInspectResult<()> {
-        use kube::Client;
-
         // Try to create a client to validate access
         let client = match Client::try_default().await {
             Ok(client) => client,
@@ -299,10 +297,6 @@ impl Validator {
         verbs: &[&str],
         namespace: Option<&str>,
     ) -> NetInspectResult<()> {
-        use k8s_openapi::api::core::v1::{Namespace, Node, Pod, Service};
-        use kube::api::ListParams;
-        use kube::{Api, Client};
-
         let client = Client::try_default().await.map_err(|e| {
             NetInspectError::KubernetesConnection(format!(
                 "Failed to create Kubernetes client: {}",
@@ -608,9 +602,6 @@ echo "EOF"
 
     /// Validate that a namespace exists in the cluster
     pub async fn validate_namespace_exists(namespace: &str) -> NetInspectResult<()> {
-        use k8s_openapi::api::core::v1::Namespace;
-        use kube::{Api, Client};
-
         let client = Client::try_default().await.map_err(NetInspectError::from)?;
 
         let namespaces: Api<Namespace> = Api::all(client);
@@ -772,7 +763,7 @@ mod tests {
         assert!(script.contains("kind: Role"));
 
         // Should contain success message
-        assert!(script.contains("✅"));
+        assert!(script.contains('✅'));
         assert!(script.contains("configured successfully"));
 
         // Should provide instructions for other namespaces
