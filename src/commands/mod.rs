@@ -1,11 +1,16 @@
 use colored::*;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
+use serde::Serialize;
+use std::net::IpAddr;
 use std::path::Path;
 use std::time::Duration;
 use tokio::time::timeout;
 
 use crate::analysis;
+use crate::analysis::policy::{
+    self, Decision, DirectionVerdict, Endpoint, Flow, Protocol, Verdict,
+};
 use crate::errors::{NetInspectError, NetInspectResult};
 use crate::model::Report;
 use crate::output::{self, OutputFormat};
@@ -77,6 +82,185 @@ async fn collect_snapshot(namespace: Option<&str>) -> NetInspectResult<ClusterSn
         Err(_) => Err(NetInspectError::Timeout(
             "Cluster snapshot collection timed out after 60 seconds".to_string(),
         )),
+    }
+}
+
+/// A `can-reach` query and its answer, as serialized for `--output json`.
+#[derive(Debug, Serialize)]
+pub struct ReachReport {
+    pub from: String,
+    pub to: String,
+    pub port: u16,
+    pub protocol: Protocol,
+    #[serde(flatten)]
+    pub verdict: Verdict,
+}
+
+/// Would NetworkPolicy let `from` talk to `to` on `port`? Endpoints are
+/// `namespace/pod`, a bare pod name (namespace `default`), or an IP address.
+pub async fn can_reach(
+    source: Source<'_>,
+    from: &str,
+    to: &str,
+    port: u16,
+    protocol: Protocol,
+    format: OutputFormat,
+) -> NetInspectResult<ReachReport> {
+    let snapshot = match source {
+        Source::Live { namespace } => collect_snapshot(namespace).await?,
+        Source::File(path) => ClusterSnapshot::load(path)?,
+    };
+    let report = evaluate_reach(&snapshot, from, to, port, protocol)?;
+    match format {
+        OutputFormat::Text => print!("{}", render_reach(&report)),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&report).map_err(|e| NetInspectError::Runtime(
+                format!("Failed to serialize verdict: {e}")
+            ))?
+        ),
+    }
+    Ok(report)
+}
+
+/// Pure part of `can-reach`: resolve the endpoints and evaluate the flow.
+pub fn evaluate_reach(
+    snapshot: &ClusterSnapshot,
+    from: &str,
+    to: &str,
+    port: u16,
+    protocol: Protocol,
+) -> NetInspectResult<ReachReport> {
+    let src = resolve_endpoint(snapshot, from)?;
+    let dst = resolve_endpoint(snapshot, to)?;
+    let verdict = policy::evaluate(
+        snapshot,
+        &Flow {
+            src,
+            dst,
+            port,
+            protocol,
+        },
+    );
+    Ok(ReachReport {
+        from: endpoint_label(&src),
+        to: endpoint_label(&dst),
+        port,
+        protocol,
+        verdict,
+    })
+}
+
+fn resolve_endpoint<'a>(
+    snapshot: &'a ClusterSnapshot,
+    spec: &str,
+) -> NetInspectResult<Endpoint<'a>> {
+    if let Ok(ip) = spec.parse::<IpAddr>() {
+        // An IP that belongs to a pod is that pod: selectors apply to it.
+        let owner = snapshot
+            .pods
+            .iter()
+            .find(|p| policy::pod_ips(p).contains(&ip));
+        return Ok(owner.map_or(Endpoint::Ip(ip), Endpoint::Pod));
+    }
+    let (ns, name) = spec.split_once('/').unwrap_or(("default", spec));
+    Validator::validate_namespace(ns)?;
+    Validator::validate_pod_name(name)?;
+    snapshot
+        .pods
+        .iter()
+        .find(|p| {
+            p.metadata.namespace.as_deref().unwrap_or("default") == ns
+                && p.metadata.name.as_deref() == Some(name)
+        })
+        .map(Endpoint::Pod)
+        .ok_or_else(|| {
+            let scope = match &snapshot.namespace {
+                Some(scope) if scope != ns => {
+                    format!(" (the snapshot only covers namespace '{scope}')")
+                }
+                _ => String::new(),
+            };
+            NetInspectError::ResourceNotFound(format!(
+                "Pod '{name}' not found in namespace '{ns}'{scope}"
+            ))
+        })
+}
+
+fn endpoint_label(endpoint: &Endpoint<'_>) -> String {
+    match endpoint {
+        Endpoint::Ip(ip) => ip.to_string(),
+        Endpoint::Pod(p) => format!(
+            "{}/{}",
+            p.metadata.namespace.as_deref().unwrap_or("default"),
+            p.metadata.name.as_deref().unwrap_or("<unnamed>")
+        ),
+    }
+}
+
+fn render_reach(report: &ReachReport) -> String {
+    let v = &report.verdict;
+    let proto = format!("{:?}", report.protocol).to_uppercase();
+    let mut out = format!(
+        "{} Can {} reach {} on {} {}?\n",
+        "🔍".cyan(),
+        report.from.yellow(),
+        report.to.yellow(),
+        proto,
+        report.port
+    );
+    if v.allowed {
+        out.push_str(&format!(
+            "{} {} by NetworkPolicy\n",
+            "✓".green().bold(),
+            "ALLOWED".green().bold()
+        ));
+    } else {
+        let side = match (v.egress.decision, v.ingress.decision) {
+            (Decision::Denied, Decision::Denied) => {
+                format!("egress from {} and ingress to {}", report.from, report.to)
+            }
+            (Decision::Denied, _) => format!("egress from {}", report.from),
+            _ => format!("ingress to {}", report.to),
+        };
+        out.push_str(&format!(
+            "{} {} on {}\n",
+            "✗".red().bold(),
+            "BLOCKED".red().bold(),
+            side
+        ));
+    }
+    out.push_str(&format!(
+        "  egress  ({}): {}\n",
+        report.from,
+        describe_direction(&v.egress, "egress")
+    ));
+    out.push_str(&format!(
+        "  ingress ({}): {}\n",
+        report.to,
+        describe_direction(&v.ingress, "ingress")
+    ));
+    for caveat in &v.caveats {
+        out.push_str(&format!("  {} {}\n", "⚠".yellow().bold(), caveat));
+    }
+    if !v.complete {
+        out.push_str(&format!(
+            "  {} Verdict is incomplete — treat it as a lower bound, not proof.\n",
+            "⚠".yellow().bold()
+        ));
+    }
+    out
+}
+
+fn describe_direction(d: &DirectionVerdict, dir: &str) -> String {
+    match d.decision {
+        Decision::NotApplicable => "not a pod — NetworkPolicy does not apply to this side".into(),
+        Decision::NotIsolated => format!("not isolated — no policy selects this pod for {dir}"),
+        Decision::Allowed => format!("allowed by {}", d.allowing.join(", ")),
+        Decision::Denied => format!(
+            "denied — isolated by {}; none of their rules match this flow",
+            d.isolating.join(", ")
+        ),
     }
 }
 

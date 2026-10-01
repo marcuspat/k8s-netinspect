@@ -118,7 +118,7 @@ pub struct Verdict {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Direction {
+pub(crate) enum Direction {
     Ingress,
     Egress,
 }
@@ -337,7 +337,7 @@ fn evaluate_direction(
 }
 
 /// `policyTypes` with upstream defaulting.
-fn applies_to(policy: &NetworkPolicy, direction: Direction) -> bool {
+pub(crate) fn applies_to(policy: &NetworkPolicy, direction: Direction) -> bool {
     let Some(spec) = policy.spec.as_ref() else {
         return false;
     };
@@ -421,7 +421,11 @@ fn peer_match(
     }
 }
 
-fn ports_match(ports: &[NetworkPolicyPort], flow: &Flow<'_>, dst_pod: Option<&Pod>) -> bool {
+pub(crate) fn ports_match(
+    ports: &[NetworkPolicyPort],
+    flow: &Flow<'_>,
+    dst_pod: Option<&Pod>,
+) -> bool {
     // No ports listed means "all ports, all protocols".
     if ports.is_empty() {
         return true;
@@ -444,7 +448,7 @@ fn ports_match(ports: &[NetworkPolicyPort], flow: &Flow<'_>, dst_pod: Option<&Po
 }
 
 /// Resolve a named container port on a pod.
-fn named_port(pod: &Pod, name: &str, protocol: &str) -> Option<i32> {
+pub(crate) fn named_port(pod: &Pod, name: &str, protocol: &str) -> Option<i32> {
     pod.spec
         .as_ref()?
         .containers
@@ -489,7 +493,7 @@ pub fn selector_matches(
     })
 }
 
-fn namespace_labels(snapshot: &ClusterSnapshot, name: &str) -> BTreeMap<String, String> {
+pub(crate) fn namespace_labels(snapshot: &ClusterSnapshot, name: &str) -> BTreeMap<String, String> {
     let mut labels = snapshot
         .namespaces
         .iter()
@@ -502,7 +506,7 @@ fn namespace_labels(snapshot: &ClusterSnapshot, name: &str) -> BTreeMap<String, 
     labels
 }
 
-fn ns_of(pod: &Pod) -> &str {
+pub(crate) fn ns_of(pod: &Pod) -> &str {
     pod.metadata.namespace.as_deref().unwrap_or("default")
 }
 
@@ -510,14 +514,14 @@ fn same_pod(a: &Pod, b: &Pod) -> bool {
     ns_of(a) == ns_of(b) && a.metadata.name.is_some() && a.metadata.name == b.metadata.name
 }
 
-fn is_host_network(pod: &Pod) -> bool {
+pub(crate) fn is_host_network(pod: &Pod) -> bool {
     pod.spec
         .as_ref()
         .and_then(|s| s.host_network)
         .unwrap_or(false)
 }
 
-fn policy_id(policy: &NetworkPolicy) -> String {
+pub(crate) fn policy_id(policy: &NetworkPolicy) -> String {
     format!(
         "{}/{}",
         policy.metadata.namespace.as_deref().unwrap_or("default"),

@@ -13,6 +13,8 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 
 - CNI detection from the agent DaemonSet — Cilium, Calico, Canal, Flannel, Weave Net, AWS VPC CNI, Azure CNI, GKE Dataplane V2, Antrea, OVN-Kubernetes, kube-router, kindnet, plus Multus / Istio CNI / Linkerd CNI — with version and rollout health; falls back to node annotations (k3s embedded flannel)
 - Findings with stable rule ids, severity, evidence and a suggested fix (CNI agent not ready, competing CNIs, node `NetworkUnavailable` / NotReady)
+- `can-reach`: answers "would NetworkPolicy let A talk to B on this port?" and names the policy that blocks it — evaluated from the policy objects, no traffic sent
+- NetworkPolicy findings: egress policies that block DNS, policies that select no pods, peers that match nothing, undefined named ports
 - `--output json` for scripts and CI
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
@@ -64,6 +66,19 @@ k8s-netinspect diagnose
 # Namespace-specific
 k8s-netinspect diagnose --namespace production
 ```
+
+### Can A reach B?
+
+```bash
+# Endpoints are namespace/pod, a bare pod name (namespace "default"), or an IP
+k8s-netinspect can-reach --from shop/web --to shop/db --port 5432
+k8s-netinspect can-reach --from shop/web --to 93.184.216.34 --port 443 --protocol tcp
+k8s-netinspect can-reach --from shop/api --to shop/db -p 5432 -o json --from-snapshot cluster.json
+```
+
+Exit status: `0` allowed, `6` blocked, anything else is an error (for example `4` when a pod does not exist).
+
+This evaluates `networking.k8s.io/v1` NetworkPolicy only. It does not see CNI-native policies (CiliumNetworkPolicy, Calico GlobalNetworkPolicy), AdminNetworkPolicy, service meshes or cloud firewalls, and it sends no traffic — "allowed" means no NetworkPolicy blocks the flow, not that the connection will succeed.
 
 ### JSON output
 
@@ -128,6 +143,15 @@ INFO [COLLECT-001] Could not collect networkpolicies — networkpolicies
     → Grant get/list on networkpolicies to run those checks.
 ```
 *(Output of `diagnose --from-snapshot tests/fixtures/calico-degraded.json`.)*
+
+### can-reach
+```
+🔍 Can ops/prom reach shop/api on TCP 8080?
+✗ BLOCKED on ingress to shop/api
+  egress  (ops/prom): not isolated — no policy selects this pod for egress
+  ingress (shop/api): denied — isolated by shop/default-deny, shop/api-from-web; none of their rules match this flow
+```
+*(Output of `can-reach --from ops/prom --to shop/api --port 8080 --from-snapshot tests/fixtures/shop-policies.json`.)*
 
 ### Namespace-specific Diagnosis
 ```

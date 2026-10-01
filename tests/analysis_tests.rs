@@ -225,3 +225,246 @@ fn cli_text_output_lists_findings_and_version_needs_no_kubeconfig() {
         .unwrap();
     assert_eq!(missing.status.code(), Some(2));
 }
+
+// ---- NetworkPolicy findings and can-reach (fixture: shop-policies) ----
+
+fn netinspect(args: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_k8s-netinspect"))
+        .args(args)
+        .env("NO_COLOR", "1")
+        .env("KUBECONFIG", "/nonexistent/kubeconfig")
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn policy_findings_on_shop_fixture() {
+    let r = report("shop-policies");
+    assert_eq!(r.cni_label(), "Calico v3.28.0");
+    assert_eq!(ids(&r), vec!["POL-001", "POL-002", "POL-003", "POL-004"]);
+
+    let dns = &r.findings[0];
+    assert_eq!(dns.severity, Severity::Error);
+    assert_eq!(dns.resource.as_deref(), Some("namespace/shop"));
+    // web, api, db are blocked; the Succeeded job pod is not counted.
+    assert!(
+        dns.detail.starts_with("3 pod(s) in 'shop'"),
+        "{}",
+        dns.detail
+    );
+    assert!(!dns.detail.contains("migrate"));
+    assert!(dns.detail.contains("shop/default-deny"));
+
+    assert_eq!(
+        r.findings[1].resource.as_deref(),
+        Some("networkpolicy/shop/frontend-ingress")
+    );
+    assert!(r.findings[1].detail.contains("{app=frontend}"));
+
+    assert_eq!(
+        r.findings[2].resource.as_deref(),
+        Some("networkpolicy/shop/api-from-web")
+    );
+    assert!(r.findings[2].detail.contains("ingress rule #2"));
+    assert!(r.findings[2]
+        .detail
+        .contains("namespaceSelector {team=observability}"));
+
+    assert_eq!(
+        r.findings[3].resource.as_deref(),
+        Some("networkpolicy/shop/db-from-api")
+    );
+    assert!(r.findings[3].detail.contains("'postgres'"));
+}
+
+#[test]
+fn allowing_dns_egress_clears_pol_001() {
+    let mut snap = ClusterSnapshot::load(&fixture_path("shop-policies")).unwrap();
+    snap.network_policies.push(
+        serde_json::from_value(serde_json::json!({
+            "metadata": {"name": "allow-dns", "namespace": "shop"},
+            "spec": {
+                "podSelector": {},
+                "policyTypes": ["Egress"],
+                "egress": [{
+                    "to": [{
+                        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
+                        "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}
+                    }],
+                    "ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}]
+                }]
+            }
+        }))
+        .unwrap(),
+    );
+    let r = analysis::analyze(&snap);
+    assert!(!ids(&r).contains(&"POL-001"), "{:?}", ids(&r));
+}
+
+#[test]
+fn policy_rules_stay_quiet_without_the_data_to_judge() {
+    // Pods unknown: "selects no pods" would be a guess.
+    let mut snap = ClusterSnapshot::load(&fixture_path("shop-policies")).unwrap();
+    snap.pods.clear();
+    snap.collection_errors
+        .push(k8s_netinspect::snapshot::CollectionError {
+            resource: "pods".into(),
+            message: "forbidden".into(),
+        });
+    let r = analysis::analyze(&snap);
+    assert!(
+        ids(&r).iter().all(|id| !id.starts_with("POL-")),
+        "{:?}",
+        ids(&r)
+    );
+
+    // Namespace-scoped snapshot: cross-namespace peers cannot be judged, and
+    // with no DNS pods visible the DNS rule falls back to a port-only check.
+    let mut snap = ClusterSnapshot::load(&fixture_path("shop-policies")).unwrap();
+    snap.namespace = Some("shop".into());
+    snap.pods
+        .retain(|p| p.metadata.namespace.as_deref() == Some("shop"));
+    let r = analysis::analyze(&snap);
+    assert_eq!(ids(&r), vec!["POL-001", "POL-002", "POL-004"]);
+}
+
+#[test]
+fn can_reach_allowed_flow_exits_zero() {
+    let fixture = fixture_path("shop-policies");
+    let out = netinspect(&[
+        "can-reach",
+        "--from",
+        "shop/web",
+        "--to",
+        "shop/api",
+        "--port",
+        "8080",
+        "--from-snapshot",
+        fixture.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("ALLOWED by NetworkPolicy"), "{text}");
+    assert!(
+        text.contains("egress  (shop/web): allowed by shop/web-to-api"),
+        "{text}"
+    );
+    assert!(
+        text.contains("ingress (shop/api): allowed by shop/api-from-web"),
+        "{text}"
+    );
+}
+
+#[test]
+fn can_reach_blocked_flow_exits_six_and_names_the_side() {
+    let fixture = fixture_path("shop-policies");
+    // api -> db: api has no egress allowance, and db's only rule uses an
+    // undefined named port.
+    let out = netinspect(&[
+        "can-reach",
+        "--from",
+        "shop/api",
+        "--to",
+        "shop/db",
+        "-p",
+        "5432",
+        "-o",
+        "json",
+        "--from-snapshot",
+        fixture.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(6));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["from"], "shop/api");
+    assert_eq!(v["to"], "shop/db");
+    assert_eq!(v["port"], 5432);
+    assert_eq!(v["protocol"], "TCP");
+    assert_eq!(v["allowed"], false);
+    assert_eq!(v["egress"]["decision"], "denied");
+    assert_eq!(v["egress"]["isolating"][0], "shop/default-deny");
+    assert_eq!(v["ingress"]["decision"], "denied");
+    assert_eq!(v["complete"], true);
+
+    // ops/prom is not isolated for egress; only the ingress side blocks.
+    let out = netinspect(&[
+        "can-reach",
+        "--from",
+        "ops/prom",
+        "--to",
+        "shop/api",
+        "--port",
+        "8080",
+        "--from-snapshot",
+        fixture.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(6));
+    assert!(text.contains("BLOCKED on ingress to shop/api"), "{text}");
+    assert!(text.contains("egress  (ops/prom): not isolated"), "{text}");
+}
+
+#[test]
+fn can_reach_accepts_ips_and_reports_unknown_pods() {
+    let fixture = fixture_path("shop-policies");
+    let f = fixture.to_str().unwrap();
+
+    // A pod's IP resolves to the pod, so selector rules apply to it.
+    let out = netinspect(&[
+        "can-reach",
+        "--from",
+        "10.0.1.10",
+        "--to",
+        "10.0.1.11",
+        "--port",
+        "8080",
+        "-o",
+        "json",
+        "--from-snapshot",
+        f,
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["from"], "shop/web");
+    assert_eq!(v["to"], "shop/api");
+
+    // External destination from an egress-isolated pod.
+    let out = netinspect(&[
+        "can-reach",
+        "--from",
+        "shop/web",
+        "--to",
+        "93.184.216.34",
+        "--port",
+        "443",
+        "--from-snapshot",
+        f,
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(6));
+    assert!(text.contains("BLOCKED on egress from shop/web"), "{text}");
+    assert!(
+        text.contains("ingress (93.184.216.34): not a pod"),
+        "{text}"
+    );
+
+    let out = netinspect(&[
+        "can-reach",
+        "--from",
+        "shop/nope",
+        "--to",
+        "shop/api",
+        "--port",
+        "80",
+        "--from-snapshot",
+        f,
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(4),
+        "ResourceNotFound, distinct from blocked (6)"
+    );
+    assert!(out.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("Pod 'nope' not found in namespace 'shop'")
+    );
+}

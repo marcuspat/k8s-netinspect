@@ -50,7 +50,7 @@ Standing constraints:
   (a pod is isolated per direction only if some policy selects it). Returns a
   verdict with the policies that allowed, or the ones that isolated without
   allowing. Table-driven tests covering the upstream semantics edge cases.
-- [ ] **L2 — `can-reach` command + policy findings.**
+- [x] **L2 — `can-reach` command + policy findings.**
   `can-reach --from ns/pod --to ns/pod --port N [--protocol]`, text and JSON,
   works live or `--from-snapshot`; evaluates egress on the source and ingress
   on the destination and names the blocking side. Rules: default-deny egress
@@ -122,3 +122,6 @@ Standing constraints:
 - 2026-10-01 — L1 landed: `analysis/policy.rs` evaluator (not yet wired to a
   command — that is L2). 45 tests. Verdicts carry `complete` + `caveats` for
   missing policy data, hostNetwork pods, and ipBlock-on-pod-IP (CNI-dependent).
+- 2026-10-01 — L2 landed: `can-reach` (exit 0 allowed / 6 blocked), rules
+  `POL-001..004`. 51 tests. `can-reach` sees only `networking.k8s.io/v1`
+  policies until L9.
