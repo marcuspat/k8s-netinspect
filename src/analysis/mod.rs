@@ -3,6 +3,7 @@
 
 pub mod cni;
 pub mod node;
+pub mod policy;
 
 use crate::model::{Finding, Report, Severity, Summary};
 use crate::snapshot::ClusterSnapshot;

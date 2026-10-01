@@ -43,7 +43,7 @@ Standing constraints:
 
 ## Loops
 
-- [ ] **L1 — NetworkPolicy reachability engine.** `analysis/policy.rs`: pure
+- [x] **L1 — NetworkPolicy reachability engine.** `analysis/policy.rs`: pure
   evaluator for `networking.k8s.io/v1` — pod/namespace selectors
   (matchLabels + matchExpressions), `ipBlock` with `except`, numeric and named
   ports, `endPort`, protocol, `policyTypes` defaulting, isolation semantics
@@ -119,3 +119,6 @@ Standing constraints:
 ## Status log
 
 - 2026-10-01 — L0 landed. 25 tests (was 14). Verified offline only.
+- 2026-10-01 — L1 landed: `analysis/policy.rs` evaluator (not yet wired to a
+  command — that is L2). 45 tests. Verdicts carry `complete` + `caveats` for
+  missing policy data, hostNetwork pods, and ipBlock-on-pod-IP (CNI-dependent).
