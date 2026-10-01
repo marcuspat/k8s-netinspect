@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-01T22:00:00+00:00",
+  "namespace": null,
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-a",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-b",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-c",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False",
+            "reason": "KubeletNotReady",
+            "message": "container runtime network not ready: cni plugin not initialized"
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "True",
+            "reason": "NoRouteCreated",
+            "message": "Node created without a route"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "calico-node",
+        "namespace": "calico-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "calico-node"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "calico-node"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "calico-node",
+                "image": "registry.local:5000/calico/node:v3.28.0"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-proxy"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-proxy"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "kube-proxy",
+                "image": "registry.k8s.io/kube-proxy:v1.30.4"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "web",
+        "namespace": "default",
+        "labels": {
+          "app": "web"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "nginx:1.27"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "192.168.10.4"
+      }
+    }
+  ],
+  "collection_errors": [
+    {
+      "resource": "networkpolicies",
+      "message": "Kubernetes API access denied: networkpolicies.networking.k8s.io is forbidden"
+    }
+  ]
+}

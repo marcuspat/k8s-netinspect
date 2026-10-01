@@ -1,16 +1,16 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use std::process;
 
-mod commands;
-mod errors;
-mod validation;
-
-use validation::Validator;
+use k8s_netinspect::commands::{self, Source};
+use k8s_netinspect::errors::NetInspectResult;
+use k8s_netinspect::output::OutputFormat;
+use k8s_netinspect::validation::Validator;
 
 #[derive(Parser)]
 #[command(name = "k8s-netinspect")]
 #[command(about = "A minimal Kubernetes network inspection tool")]
-#[command(version = "0.1.0")]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -21,8 +21,23 @@ enum Commands {
     /// Diagnose CNI and basic network configuration
     Diagnose {
         /// Target namespace for pod diagnostics (default: cluster-wide)
+        #[arg(short, long, conflicts_with = "from_snapshot")]
+        namespace: Option<String>,
+        /// Output format
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+        /// Analyze a snapshot file instead of a live cluster (no API access needed)
+        #[arg(long, value_name = "FILE")]
+        from_snapshot: Option<PathBuf>,
+    },
+    /// Capture a redacted snapshot of the cluster's network state as JSON
+    Snapshot {
+        /// Scope workload objects to one namespace (default: cluster-wide)
         #[arg(short, long)]
         namespace: Option<String>,
+        /// Write to this file instead of stdout
+        #[arg(short, long, value_name = "FILE")]
+        file: Option<PathBuf>,
     },
     /// Test pod connectivity
     TestPod {
@@ -41,54 +56,59 @@ enum Commands {
 async fn main() {
     let cli = Cli::parse();
 
-    // Validate environment before executing commands
-    if let Err(e) = Validator::validate_environment() {
-        eprintln!("{}", e.detailed_message());
-        process::exit(e.exit_code());
-    }
-
-    let result = match &cli.command {
-        Commands::Diagnose { namespace } => {
-            if let Err(e) = Validator::validate_kubernetes_access().await {
-                Err(e)
-            } else {
-                // Validate namespace if provided
-                if let Some(ns) = namespace {
-                    if let Err(e) = Validator::validate_namespace(ns) {
-                        Err(e)
-                    } else if let Err(e) = Validator::validate_namespace_exists(ns).await {
-                        Err(e)
-                    } else {
-                        commands::diagnose(namespace.as_deref()).await
-                    }
-                } else {
-                    commands::diagnose(None).await
-                }
-            }
-        }
-        Commands::TestPod { pod, namespace } => {
-            // Validate inputs
-            if let Err(e) = Validator::validate_pod_name(pod) {
-                Err(e)
-            } else if let Err(e) = Validator::validate_namespace(namespace) {
-                Err(e)
-            } else if let Err(e) = Validator::validate_kubernetes_access().await {
-                Err(e)
-            } else {
-                commands::test_pod(pod, namespace).await
-            }
-        }
-        Commands::Version => {
-            commands::version();
-            Ok(())
-        }
-    };
-
-    match result {
+    match run(&cli.command).await {
         Ok(()) => process::exit(0),
         Err(e) => {
             eprintln!("{}", e.detailed_message());
             process::exit(e.exit_code());
         }
     }
+}
+
+async fn run(command: &Commands) -> NetInspectResult<()> {
+    match command {
+        Commands::Diagnose {
+            namespace,
+            output,
+            from_snapshot,
+        } => {
+            if let Some(path) = from_snapshot {
+                commands::diagnose(Source::File(path), *output).await?;
+                return Ok(());
+            }
+            let namespace = namespace.as_deref();
+            validate_live(namespace).await?;
+            commands::diagnose(Source::Live { namespace }, *output).await?;
+            Ok(())
+        }
+        Commands::Snapshot { namespace, file } => {
+            let namespace = namespace.as_deref();
+            validate_live(namespace).await?;
+            commands::snapshot(namespace, file.as_deref()).await
+        }
+        Commands::TestPod { pod, namespace } => {
+            Validator::validate_pod_name(pod)?;
+            Validator::validate_namespace(namespace)?;
+            Validator::validate_environment()?;
+            Validator::validate_kubernetes_access().await?;
+            commands::test_pod(pod, namespace).await
+        }
+        Commands::Version => {
+            commands::version();
+            Ok(())
+        }
+    }
+}
+
+/// Pre-flight for commands that talk to a cluster.
+async fn validate_live(namespace: Option<&str>) -> NetInspectResult<()> {
+    if let Some(ns) = namespace {
+        Validator::validate_namespace(ns)?;
+    }
+    Validator::validate_environment()?;
+    Validator::validate_kubernetes_access().await?;
+    if let Some(ns) = namespace {
+        Validator::validate_namespace_exists(ns).await?;
+    }
+    Ok(())
 }

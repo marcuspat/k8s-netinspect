@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-01T22:00:00+00:00",
+  "namespace": null,
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "k3s-server",
+        "annotations": {
+          "flannel.alpha.coreos.com/backend-type": "vxlan",
+          "flannel.alpha.coreos.com/public-ip": "10.1.0.5"
+        }
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "k3s-agent",
+        "annotations": {
+          "flannel.alpha.coreos.com/backend-type": "vxlan",
+          "flannel.alpha.coreos.com/public-ip": "10.1.0.6"
+        }
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "svclb-traefik",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "svclb-traefik"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "svclb-traefik"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "svclb-traefik",
+                "image": "rancher/klipper-lb:v0.4.9"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "coredns"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "nginx:1.27"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.42.0.3"
+      }
+    }
+  ]
+}

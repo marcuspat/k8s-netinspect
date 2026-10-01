@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-01T22:00:00+00:00",
+  "namespace": null,
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-a",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-b",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "kube-flannel-ds",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-flannel-ds"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-flannel-ds"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "kube-flannel-ds",
+                "image": "docker.io/flannel/flannel:v0.25.6"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "cilium",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "cilium"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "cilium"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "cilium",
+                "image": "quay.io/cilium/cilium:v1.16.1"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 0
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "istio-cni-node",
+        "namespace": "istio-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "istio-cni-node"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "istio-cni-node"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "istio-cni-node",
+                "image": "docker.io/istio/install-cni:1.23.0"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    }
+  ],
+  "pods": []
+}

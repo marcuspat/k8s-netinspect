@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-01T22:00:00+00:00",
+  "namespace": null,
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-a",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-b",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-c",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "cilium",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "cilium"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "cilium"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "cilium",
+                "image": "quay.io/cilium/cilium:v1.16.1@sha256:0b4a3ab41a4760d86b7fc945b8783747ba27f29dac30dd434d94f2c9e3679f39"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "cilium-envoy",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "cilium-envoy"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "cilium-envoy"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "cilium-envoy",
+                "image": "quay.io/cilium/cilium-envoy:v1.29.7"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "node-exporter",
+        "namespace": "monitoring"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "node-exporter"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "node-exporter"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "node-exporter",
+                "image": "quay.io/prometheus/node-exporter:v1.8.2"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "web",
+        "namespace": "default",
+        "labels": {
+          "app": "web"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "nginx:1.27"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.1.10"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "api",
+        "namespace": "default",
+        "labels": {
+          "app": "api"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "nginx:1.27"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.2.11"
+      }
+    }
+  ]
+}

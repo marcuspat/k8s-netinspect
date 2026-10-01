@@ -1,96 +1,83 @@
 use colored::*;
-use k8s_openapi::api::core::v1::{Node, Pod};
+use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
+use std::path::Path;
 use std::time::Duration;
 use tokio::time::timeout;
 
+use crate::analysis;
 use crate::errors::{NetInspectError, NetInspectResult};
+use crate::model::Report;
+use crate::output::{self, OutputFormat};
+use crate::snapshot::ClusterSnapshot;
 use crate::validation::Validator;
 
-pub async fn diagnose(namespace: Option<&str>) -> NetInspectResult<()> {
-    println!("{}", "🔍 Starting network diagnosis...".cyan().bold());
+/// Where `diagnose` gets its data from.
+pub enum Source<'a> {
+    /// Collect from the cluster in the current kubeconfig context.
+    Live { namespace: Option<&'a str> },
+    /// Analyze a snapshot file written by the `snapshot` command.
+    File(&'a Path),
+}
 
-    // Create client with better error handling
-    let client = create_kubernetes_client().await?;
-
-    // Detect CNI with timeout
-    let cni_result = timeout(Duration::from_secs(30), detect_cni(&client)).await;
-
-    let cni_type = match cni_result {
-        Ok(Ok(cni)) => cni,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => {
-            return Err(NetInspectError::Timeout(
-                "CNI detection timed out after 30 seconds".to_string(),
-            ))
-        }
-    };
-
-    println!("{} CNI detected: {}", "✓".green().bold(), cni_type.green());
-
-    // Check basic cluster connectivity with timeout
-    let nodes_result = timeout(Duration::from_secs(15), get_cluster_nodes(&client)).await;
-
-    let node_count = match nodes_result {
-        Ok(Ok(count)) => count,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => {
-            return Err(NetInspectError::Timeout(
-                "Node listing timed out after 15 seconds".to_string(),
-            ))
-        }
-    };
-
-    if node_count == 0 {
-        println!(
-            "{} {}",
-            "⚠".yellow().bold(),
-            "No nodes found in cluster".yellow()
-        );
-    } else {
-        println!(
-            "{} Found {} nodes",
-            "✓".green().bold(),
-            node_count.to_string().yellow()
-        );
+pub async fn diagnose(source: Source<'_>, format: OutputFormat) -> NetInspectResult<Report> {
+    if format == OutputFormat::Text {
+        println!("{}", "🔍 Starting network diagnosis...".cyan().bold());
     }
 
-    // Check pods in specified namespace or cluster-wide
-    let pod_result = timeout(
-        Duration::from_secs(15),
-        check_pods_in_namespace(&client, namespace),
-    )
-    .await;
+    let snapshot = match source {
+        Source::Live { namespace } => collect_snapshot(namespace).await?,
+        Source::File(path) => ClusterSnapshot::load(path)?,
+    };
 
-    match pod_result {
-        Ok(Ok(pod_count)) => {
-            if let Some(ns) = namespace {
-                println!(
-                    "{} Found {} pods in namespace '{}'",
-                    "✓".green().bold(),
-                    pod_count.to_string().yellow(),
-                    ns.yellow()
-                );
-            } else {
-                println!(
-                    "{} Found {} pods cluster-wide",
-                    "✓".green().bold(),
-                    pod_count.to_string().yellow()
-                );
-            }
-        }
-        Ok(Err(e)) => {
-            println!("{} Failed to check pods: {}", "⚠".yellow().bold(), e);
-        }
-        Err(_) => {
-            println!(
-                "{} Pod listing timed out after 15 seconds",
-                "⚠".yellow().bold()
+    let report = analysis::analyze(&snapshot);
+    print!("{}", output::render(&report, format)?);
+    if format == OutputFormat::Json {
+        println!();
+    }
+    Ok(report)
+}
+
+/// Write a redacted cluster network snapshot to `file`, or stdout.
+pub async fn snapshot(namespace: Option<&str>, file: Option<&Path>) -> NetInspectResult<()> {
+    let snap = collect_snapshot(namespace).await?;
+    let json = snap.to_json()?;
+    match file {
+        Some(path) => {
+            std::fs::write(path, json).map_err(|e| {
+                NetInspectError::Configuration(format!(
+                    "Cannot write snapshot '{}': {}",
+                    path.display(),
+                    e
+                ))
+            })?;
+            eprintln!(
+                "{} Snapshot written to {} ({} nodes, {} pods, {} lists unavailable)",
+                "✓".green().bold(),
+                path.display(),
+                snap.nodes.len(),
+                snap.pods.len(),
+                snap.collection_errors.len()
             );
         }
+        None => println!("{json}"),
     }
-
     Ok(())
+}
+
+async fn collect_snapshot(namespace: Option<&str>) -> NetInspectResult<ClusterSnapshot> {
+    let client = create_kubernetes_client().await?;
+    match timeout(
+        Duration::from_secs(60),
+        ClusterSnapshot::collect(&client, namespace),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(NetInspectError::Timeout(
+            "Cluster snapshot collection timed out after 60 seconds".to_string(),
+        )),
+    }
 }
 
 pub async fn test_pod(pod_name: &str, namespace: &str) -> NetInspectResult<()> {
@@ -207,69 +194,6 @@ pub fn version() {
     println!("A minimal Kubernetes network inspection tool");
 }
 
-async fn detect_cni(client: &Client) -> NetInspectResult<String> {
-    let nodes_list = get_cluster_nodes_list(client).await?;
-
-    if nodes_list.is_empty() {
-        return Ok("No nodes available for CNI detection".to_string());
-    }
-
-    let mut detected_cnis = Vec::new();
-
-    for node in &nodes_list {
-        if let Some(status) = &node.status {
-            if let Some(node_info) = &status.node_info {
-                // Enhanced CNI detection logic
-                let runtime = &node_info.container_runtime_version;
-
-                // Check annotations for CNI-specific markers
-                if let Some(annotations) = &node.metadata.annotations {
-                    // Calico detection
-                    if annotations
-                        .keys()
-                        .any(|k| k.contains("calico") || k.contains("projectcalico"))
-                    {
-                        detected_cnis.push("Calico".to_string());
-                        continue;
-                    }
-
-                    // Flannel detection
-                    if annotations.keys().any(|k| k.contains("flannel")) {
-                        detected_cnis.push("Flannel".to_string());
-                        continue;
-                    }
-
-                    // Weave detection
-                    if annotations.keys().any(|k| k.contains("weave")) {
-                        detected_cnis.push("Weave Net".to_string());
-                        continue;
-                    }
-
-                    // Cilium detection
-                    if annotations.keys().any(|k| k.contains("cilium")) {
-                        detected_cnis.push("Cilium".to_string());
-                        continue;
-                    }
-                }
-
-                // Fallback to runtime detection
-                if runtime.contains("containerd") {
-                    detected_cnis.push("Generic CNI (containerd)".to_string());
-                } else if runtime.contains("docker") {
-                    detected_cnis.push("Generic CNI (docker)".to_string());
-                }
-            }
-        }
-    }
-
-    if detected_cnis.is_empty() {
-        Ok("Unknown CNI".to_string())
-    } else {
-        // Return the most common CNI or first detected
-        Ok(detected_cnis.into_iter().next().unwrap())
-    }
-}
-
 async fn test_connectivity_with_retries(pod_ip: &str, max_retries: u32) -> NetInspectResult<()> {
     for attempt in 1..=max_retries {
         match test_connectivity(pod_ip).await {
@@ -320,73 +244,4 @@ async fn test_connectivity(pod_ip: &str) -> NetInspectResult<()> {
 /// Create Kubernetes client with enhanced error handling
 async fn create_kubernetes_client() -> NetInspectResult<Client> {
     Client::try_default().await.map_err(NetInspectError::from)
-}
-
-/// Get cluster nodes with enhanced error handling
-async fn get_cluster_nodes(client: &Client) -> NetInspectResult<usize> {
-    let nodes: Api<Node> = Api::all(client.clone());
-    let node_list = nodes
-        .list(&Default::default())
-        .await
-        .map_err(NetInspectError::from)?;
-    Ok(node_list.items.len())
-}
-
-/// Get cluster nodes list for CNI detection
-async fn get_cluster_nodes_list(client: &Client) -> NetInspectResult<Vec<Node>> {
-    let nodes: Api<Node> = Api::all(client.clone());
-    let node_list = nodes
-        .list(&Default::default())
-        .await
-        .map_err(NetInspectError::from)?;
-    Ok(node_list.items)
-}
-
-/// Check pods in specified namespace or cluster-wide
-async fn check_pods_in_namespace(
-    client: &Client,
-    namespace: Option<&str>,
-) -> NetInspectResult<usize> {
-    let pods = if let Some(ns) = namespace {
-        // Pods in specific namespace
-        let pods: Api<Pod> = Api::namespaced(client.clone(), ns);
-        pods.list(&Default::default())
-            .await
-            .map_err(NetInspectError::from)?
-    } else {
-        // All pods cluster-wide
-        let pods: Api<Pod> = Api::all(client.clone());
-        pods.list(&Default::default())
-            .await
-            .map_err(NetInspectError::from)?
-    };
-
-    Ok(pods.items.len())
-}
-
-/// Quick connectivity test for summary (shorter timeout)
-#[allow(dead_code)]
-async fn test_connectivity_quick(pod_ip: &str) -> NetInspectResult<()> {
-    let url = format!("http://{}:80", pod_ip);
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(3)) // Shorter timeout for summary
-        .connect_timeout(Duration::from_secs(2))
-        .build()
-        .map_err(|e| NetInspectError::Runtime(format!("Failed to create HTTP client: {}", e)))?;
-
-    let response = client.get(&url).send().await?;
-
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        Err(NetInspectError::NetworkConnectivity(format!(
-            "HTTP {} - {}",
-            response.status(),
-            response
-                .status()
-                .canonical_reason()
-                .unwrap_or("Unknown error")
-        )))
-    }
 }

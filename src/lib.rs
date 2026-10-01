@@ -1,10 +1,15 @@
 //! k8s-netinspect library
 //!
-//! A comprehensive Kubernetes network debugging tool that provides
-//! advanced RBAC validation and network connectivity analysis.
+//! Kubernetes network diagnostics. A [`snapshot::ClusterSnapshot`] is
+//! collected (or loaded from disk), [`analysis::analyze`] turns it into a
+//! [`model::Report`] of findings, and [`output`] renders it.
 
+pub mod analysis;
 pub mod commands;
 pub mod errors;
+pub mod model;
+pub mod output;
+pub mod snapshot;
 pub mod validation;
 
 // Re-export commonly used types for convenience

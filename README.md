@@ -11,7 +11,11 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 
 ## Features
 
-- CNI detection (Calico, Flannel, Weave, Cilium)
+- CNI detection from the agent DaemonSet — Cilium, Calico, Canal, Flannel, Weave Net, AWS VPC CNI, Azure CNI, GKE Dataplane V2, Antrea, OVN-Kubernetes, kube-router, kindnet, plus Multus / Istio CNI / Linkerd CNI — with version and rollout health; falls back to node annotations (k3s embedded flannel)
+- Findings with stable rule ids, severity, evidence and a suggested fix (CNI agent not ready, competing CNIs, node `NetworkUnavailable` / NotReady)
+- `--output json` for scripts and CI
+- Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
+- Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
 - Pod connectivity testing with HTTP checks
 - Namespace support for targeted diagnostics
 - RBAC permission validation with detailed error messages
@@ -61,6 +65,23 @@ k8s-netinspect diagnose
 k8s-netinspect diagnose --namespace production
 ```
 
+### JSON output
+
+```bash
+k8s-netinspect diagnose --output json
+```
+
+### Snapshot and offline analysis
+
+```bash
+# Capture network-relevant objects (env values, last-applied-configuration
+# and managedFields are stripped) to attach to a ticket or analyze later
+k8s-netinspect snapshot --file cluster.json
+
+# Analyze it anywhere — no kubeconfig or cluster access required
+k8s-netinspect diagnose --from-snapshot cluster.json
+```
+
 ### Test Pod Connectivity
 
 ```bash
@@ -83,6 +104,30 @@ k8s-netinspect --version
 ✓ Found 2 nodes
 ✓ Found 8 pods cluster-wide
 ```
+
+### Diagnosis with findings
+```
+🔍 Starting network diagnosis...
+✓ CNI detected: Calico v3.28.0
+  • Calico (daemonset/calico-system/calico-node): 2/3 agents ready
+✓ Found 3 nodes
+✓ Found 1 pods cluster-wide
+
+Findings (4)
+ERROR [CNI-002] Calico agent is not ready on every node — daemonset/calico-system/calico-node
+    2 of 3 desired agent pods are ready. Pods on the affected nodes cannot get network set up or policy programmed.
+    → Check: kubectl -n calico-system get pods -o wide | grep -v Running; then kubectl logs on the failing agent pod
+ERROR [NODE-002] Node network is unavailable — node/node-c
+    NetworkUnavailable=True (NoRouteCreated) Node created without a route
+    → The CNI agent or cloud route controller has not configured this node. Check the CNI agent pod on it and the node's podCIDR/route allocation.
+ERROR [NODE-003] Node is not Ready — node/node-c
+    Ready=False (KubeletNotReady) container runtime network not ready: cni plugin not initialized
+    → Check: kubectl describe node node-c
+INFO [COLLECT-001] Could not collect networkpolicies — networkpolicies
+    Kubernetes API access denied: networkpolicies.networking.k8s.io is forbidden — checks that depend on it were skipped.
+    → Grant get/list on networkpolicies to run those checks.
+```
+*(Output of `diagnose --from-snapshot tests/fixtures/calico-degraded.json`.)*
 
 ### Namespace-specific Diagnosis
 ```
@@ -153,7 +198,7 @@ cargo build --release
 
 - **Rust**: 1.70+ (for building from source)
 - **Kubernetes cluster access** via kubeconfig  
-- **RBAC permissions**: `get/list` on pods, nodes, namespaces
+- **RBAC permissions**: `get/list` on pods, nodes, namespaces. Optional, for fuller diagnosis: `list` on services, endpointslices, networkpolicies, daemonsets, and `get` on the `coredns` / `kube-proxy` ConfigMaps in `kube-system`
 - **Network connectivity** to Kubernetes API server
 
 ## Configuration

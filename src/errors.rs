@@ -56,6 +56,21 @@ impl fmt::Display for NetInspectError {
 impl std::error::Error for NetInspectError {}
 
 impl NetInspectError {
+    /// The message without the colored category prefix, for embedding in
+    /// structured output (JSON, snapshots).
+    pub fn plain_message(&self) -> String {
+        match self {
+            NetInspectError::KubernetesConnection(m)
+            | NetInspectError::PermissionDenied(m)
+            | NetInspectError::Configuration(m)
+            | NetInspectError::NetworkConnectivity(m)
+            | NetInspectError::InvalidInput(m)
+            | NetInspectError::ResourceNotFound(m)
+            | NetInspectError::Timeout(m)
+            | NetInspectError::Runtime(m) => m.clone(),
+        }
+    }
+
     /// Get the exit code for this error type
     pub fn exit_code(&self) -> i32 {
         match self {
