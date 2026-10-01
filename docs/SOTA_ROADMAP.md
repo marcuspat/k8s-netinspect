@@ -56,7 +56,7 @@ Standing constraints:
   on the destination and names the blocking side. Rules: default-deny egress
   with no DNS allowance, policy selecting no pods, peer selector matching no
   namespace/pod, named port that no selected pod defines.
-- [ ] **L3 — Service and EndpointSlice diagnostics.** Selector matches no pods;
+- [x] **L3 — Service and EndpointSlice diagnostics.** Selector matches no pods;
   no ready endpoints; matched pods not Ready; `targetPort` (number or name)
   not exposed by the backing containers; LoadBalancer stuck without ingress
   address; headless/ExternalName handled without false positives.
@@ -125,3 +125,6 @@ Standing constraints:
 - 2026-10-01 — L2 landed: `can-reach` (exit 0 allowed / 6 blocked), rules
   `POL-001..004`. 51 tests. `can-reach` sees only `networking.k8s.io/v1`
   policies until L9.
+- 2026-10-01 — L3 landed: rules `SVC-001..005`. 54 tests. A numeric
+  `targetPort` mismatch is only flagged when every backend declares ports and
+  none matches, since containers may listen on undeclared ports.

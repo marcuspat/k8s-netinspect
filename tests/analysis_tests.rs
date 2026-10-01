@@ -468,3 +468,129 @@ fn can_reach_accepts_ips_and_reports_unknown_pods() {
         String::from_utf8_lossy(&out.stderr).contains("Pod 'nope' not found in namespace 'shop'")
     );
 }
+
+// ---- Service diagnostics (fixture: services-broken) ----
+
+fn by_resource<'a>(r: &'a Report, resource: &str) -> Vec<&'a k8s_netinspect::model::Finding> {
+    r.findings
+        .iter()
+        .filter(|f| f.resource.as_deref() == Some(resource))
+        .collect()
+}
+
+#[test]
+fn service_findings_on_broken_fixture() {
+    let r = report("services-broken");
+    let svc_ids: Vec<(&str, &str)> = r
+        .findings
+        .iter()
+        .filter(|f| f.category == "service")
+        .map(|f| (f.id.as_str(), f.resource.as_deref().unwrap()))
+        .collect();
+    assert_eq!(
+        svc_ids,
+        vec![
+            ("SVC-002", "service/shop/db"),
+            ("SVC-003", "service/shop/cache"),
+            ("SVC-001", "service/shop/orders"),
+            ("SVC-001", "service/shop/worker"),
+            ("SVC-003", "service/shop/api"),
+            ("SVC-003", "service/shop/web-metrics"),
+            ("SVC-004", "service/shop/public"),
+            ("SVC-005", "service/shop/legacy-db"),
+        ],
+        "errors first, then warnings by id and resource"
+    );
+
+    let db = by_resource(&r, "service/shop/db")[0];
+    assert_eq!(db.severity, Severity::Error);
+    assert!(db
+        .detail
+        .contains("1 pod(s) match the selector but none is Ready (db-0)"));
+
+    // Named targetPort missing on every backend is an Error...
+    let cache = by_resource(&r, "service/shop/cache")[0];
+    assert_eq!(cache.severity, Severity::Error);
+    assert!(cache.detail.contains("named port 'redis'"));
+    assert!(cache.detail.contains("none of the 1 matching pod(s)"));
+    // ...on only some of them, a Warning.
+    let api = by_resource(&r, "service/shop/api")[0];
+    assert_eq!(api.severity, Severity::Warning);
+    assert!(api.detail.contains("only 1 of the 2 matching pod(s)"));
+
+    let metrics = by_resource(&r, "service/shop/web-metrics")[0];
+    assert!(metrics.detail.contains("targets port 9100"));
+    assert!(metrics.detail.contains("declare only port (8080)"));
+
+    let orders = by_resource(&r, "service/shop/orders")[0];
+    assert!(orders.detail.contains("{app=orders, tier=backend}"));
+    // The only app=worker pod has Succeeded: it is not a backend.
+    assert_eq!(by_resource(&r, "service/shop/worker")[0].id, "SVC-001");
+}
+
+#[test]
+fn healthy_and_special_services_produce_no_findings() {
+    let r = report("services-broken");
+    for clean in [
+        "service/shop/web",
+        "service/shop/web-headless",
+        "service/shop/public-ok",
+        "service/shop/billing-ext",   // ExternalName
+        "service/default/kubernetes", // selector-less with an EndpointSlice
+        "service/shop/raw",           // pods declare no ports: nothing to compare
+    ] {
+        assert!(
+            by_resource(&r, clean).is_empty(),
+            "{clean}: {:?}",
+            by_resource(&r, clean)
+        );
+    }
+}
+
+#[test]
+fn service_rules_respect_missing_data_and_publish_not_ready() {
+    let mut snap = ClusterSnapshot::load(&fixture_path("services-broken")).unwrap();
+    for s in &mut snap.services {
+        if s.metadata.name.as_deref() == Some("db") {
+            s.spec.as_mut().unwrap().publish_not_ready_addresses = Some(true);
+        }
+    }
+    // EndpointSlices forbidden: the selector-less check must not fire.
+    snap.endpoint_slices.clear();
+    snap.collection_errors
+        .push(k8s_netinspect::snapshot::CollectionError {
+            resource: "endpointslices".into(),
+            message: "forbidden".into(),
+        });
+    let r = analysis::analyze(&snap);
+    assert!(by_resource(&r, "service/shop/db").is_empty());
+    assert!(!ids(&r).contains(&"SVC-005"));
+
+    // Pods forbidden: selector-based checks are skipped, LoadBalancer status is not.
+    snap.pods.clear();
+    snap.collection_errors
+        .push(k8s_netinspect::snapshot::CollectionError {
+            resource: "pods".into(),
+            message: "forbidden".into(),
+        });
+    let r = analysis::analyze(&snap);
+    let svc: Vec<&str> = r
+        .findings
+        .iter()
+        .filter(|f| f.category == "service")
+        .map(|f| f.id.as_str())
+        .collect();
+    assert_eq!(svc, vec!["SVC-004"]);
+
+    // Services forbidden: nothing at all.
+    snap.services.clear();
+    snap.collection_errors
+        .push(k8s_netinspect::snapshot::CollectionError {
+            resource: "services".into(),
+            message: "forbidden".into(),
+        });
+    assert!(analysis::analyze(&snap)
+        .findings
+        .iter()
+        .all(|f| f.category != "service"));
+}

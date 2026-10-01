@@ -5,6 +5,7 @@ pub mod cni;
 pub mod node;
 pub mod policy;
 pub mod policy_rules;
+pub mod service;
 
 use crate::model::{Finding, Report, Severity, Summary};
 use crate::snapshot::ClusterSnapshot;
@@ -19,6 +20,7 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Report {
     findings.extend(cni::analyze(snapshot, &plugins));
     findings.extend(node::analyze(snapshot));
     findings.extend(policy_rules::analyze(snapshot));
+    findings.extend(service::analyze(snapshot));
 
     findings.sort_by(|a, b| {
         b.severity
