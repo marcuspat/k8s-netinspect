@@ -28,7 +28,7 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Vec<Finding> {
 
 /// Can Services in `ns` be looked up in this snapshot?
 fn services_visible(snapshot: &ClusterSnapshot, ns: &str) -> bool {
-    !snapshot.is_unknown("services") && snapshot.namespace.as_deref().map_or(true, |s| s == ns)
+    !snapshot.is_unknown("services") && snapshot.namespace.as_deref().is_none_or(|s| s == ns)
 }
 
 fn find_service<'a>(snapshot: &'a ClusterSnapshot, ns: &str, name: &str) -> Option<&'a Service> {
@@ -296,7 +296,7 @@ fn check_route(snapshot: &ClusterSnapshot, route: &DynamicObject) -> Vec<Finding
     let (ns, name) = meta(route);
     let resource = format!("httproute/{ns}/{name}");
     let spec = &route.data["spec"];
-    let in_scope = |target: &str| snapshot.namespace.as_deref().map_or(true, |s| s == target);
+    let in_scope = |target: &str| snapshot.namespace.as_deref().is_none_or(|s| s == target);
 
     // GW-001: parentRefs.
     if !snapshot.is_unknown("gateways") {
@@ -459,7 +459,7 @@ fn grant_allows(snapshot: &ClusterSnapshot, from_ns: &str, to_ns: &str, service:
                     && str_or(t, "kind", "") == "Service"
                     && t.get("name")
                         .and_then(Value::as_str)
-                        .map_or(true, |n| n.is_empty() || n == service)
+                        .is_none_or(|n| n.is_empty() || n == service)
             });
             from_ok && to_ok
         })

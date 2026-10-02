@@ -2,7 +2,7 @@
 //! address collisions, and node pod ranges that overlap or are running out.
 
 use k8s_openapi::api::core::v1::{Node, Pod};
-use k8s_openapi::chrono::DateTime;
+use k8s_openapi::jiff::Timestamp;
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 
@@ -74,7 +74,7 @@ fn pods_without_network(snapshot: &ClusterSnapshot) -> Vec<Finding> {
     let Some(now) = snapshot
         .collected_at
         .as_deref()
-        .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .and_then(|t| t.parse::<Timestamp>().ok())
     else {
         return Vec::new(); // no clock, no way to tell "stuck" from "just created"
     };
@@ -103,7 +103,7 @@ fn pods_without_network(snapshot: &ClusterSnapshot) -> Vec<Finding> {
             .as_ref()
             .or(pod.metadata.creation_timestamp.as_ref());
         let stuck =
-            since.is_some_and(|t| (now.timestamp() - t.0.timestamp()) > SANDBOX_GRACE_SECONDS);
+            since.is_some_and(|t| (now.as_second() - t.0.as_second()) > SANDBOX_GRACE_SECONDS);
         if creating && stuck {
             by_node.entry(node).or_default().push(pod_ref(pod));
         }

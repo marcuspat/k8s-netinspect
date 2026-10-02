@@ -297,7 +297,10 @@ fn has_slice_addresses(snapshot: &ClusterSnapshot, ns: &str, service: &str) -> b
                 .and_then(|l| l.get(SERVICE_NAME_LABEL))
                 .map(String::as_str)
                 == Some(service)
-            && s.endpoints.iter().any(|e| !e.addresses.is_empty())
+            && s.endpoints
+                .iter()
+                .flatten()
+                .any(|e| !e.addresses.is_empty())
     })
 }
 

@@ -28,6 +28,7 @@ Standing constraints:
   cluster** in the README until someone runs it. No invented test results.
 - CI was removed by owner decision (`49816af`). Do not re-add it.
 - Do not merge to `main`, do not publish to crates.io, no paid API calls.
+- MSRV is Rust 1.89 (set by kube 4.x) as of L13.
 - Existing text output lines (`CNI detected`, `Found N nodes`, `Found N pods`)
   and exit codes stay backward compatible.
 
@@ -102,7 +103,7 @@ Standing constraints:
   (`initialize`, `tools/list`, `tools/call`) exposing read-only tools —
   `diagnose`, `can_reach`, `explain_rule`, `snapshot` — so coding/ops agents
   can query network state. No mutating tools. Protocol handler tests.
-- [ ] **L13 — Dependency and runtime modernization.** kube 0.87 → current,
+- [x] **L13 — Dependency and runtime modernization.** kube 0.87 → current,
   matching k8s-openapi, reqwest 0.12, compile regexes once; in-cluster config
   support (the pre-flight currently rejects a pod with no kubeconfig);
   decide and document the MSRV; `cargo audit` if the advisory DB is reachable.
@@ -192,3 +193,15 @@ Standing constraints:
   cluster detail than an agent needs, and `diagnose` already returns the
   analysis. Not exercised with a real MCP client; in live mode every
   `diagnose` / `can_reach` call re-collects the cluster (no caching).
+- 2026-10-02 — L13 landed: kube 0.87 → 4.2, k8s-openapi 0.20 → 0.28
+  (`latest`, i.e. v1.36 types), reqwest 0.11 → 0.12, colored 2 → 3, unused
+  kube `runtime` feature dropped, `cargo update` across the lockfile.
+  `cargo audit`: 0 vulnerabilities (the pre-update lockfile had 2, in
+  `bytes` and `slab`). Regexes compile once; the pre-flight accepts the
+  in-cluster service account and treats `KUBECONFIG` as a path list. 114
+  tests. **MSRV went from 1.70 to 1.89** — forced by kube 4.x; the earlier
+  1.70 pins existed for the CI that has since been removed. Porting notes:
+  timestamps are `jiff` not `chrono`, `EndpointSlice.endpoints` and
+  NetworkPolicy `podSelector` became optional (an omitted selector is
+  treated as "all pods"). Not done: reqwest 0.13 (0.12 kept to limit
+  churn); the musl cross-build was not re-run after the upgrade.

@@ -174,7 +174,7 @@ pub fn analyze(
             && snapshot
                 .namespace
                 .as_deref()
-                .map_or(true, |ns| ns == SYSTEM_NAMESPACE);
+                .is_none_or(|ns| ns == SYSTEM_NAMESPACE);
         if pods_visible {
             findings.push(
                 Finding::new(

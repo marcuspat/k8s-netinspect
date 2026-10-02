@@ -314,7 +314,7 @@ fn network_policy_direction(
         let Some(spec) = policy.spec.as_ref() else {
             continue;
         };
-        if !selector_matches(&spec.pod_selector, subject_labels) {
+        if !policy_selects(&spec.pod_selector, subject_labels) {
             continue;
         }
         if !applies_to(policy, direction) {
@@ -530,6 +530,17 @@ pub(crate) fn named_port(pod: &Pod, name: &str, protocol: &str) -> Option<i32> {
         .map(|p| p.container_port)
 }
 
+/// A NetworkPolicy's `podSelector`. Omitted means the same as empty: every
+/// pod in the policy's namespace.
+pub(crate) fn policy_selects(
+    selector: &Option<LabelSelector>,
+    labels: Option<&BTreeMap<String, String>>,
+) -> bool {
+    selector
+        .as_ref()
+        .is_none_or(|s| selector_matches(s, labels))
+}
+
 /// Kubernetes label selector semantics. An empty selector matches everything.
 pub fn selector_matches(
     selector: &LabelSelector,
@@ -604,8 +615,7 @@ pub fn pod_ips(pod: &Pod) -> Vec<IpAddr> {
         .pod_ips
         .iter()
         .flatten()
-        .filter_map(|p| p.ip.as_deref())
-        .filter_map(|s| s.parse().ok())
+        .filter_map(|p| p.ip.parse().ok())
         .collect();
     if let Some(ip) = status.pod_ip.as_deref().and_then(|s| s.parse().ok()) {
         if !ips.contains(&ip) {

@@ -289,14 +289,14 @@ cargo build --release
 
 ## Requirements
 
-- **Rust**: 1.70+ (for building from source)
+- **Rust**: 1.89+ (for building from source; required by the Kubernetes client)
 - **Kubernetes cluster access** via kubeconfig  
 - **RBAC permissions**: `get/list` on pods, nodes, namespaces. Optional, for fuller diagnosis: `list` on services, endpointslices, networkpolicies, ingresses, ingressclasses, daemonsets, the Gateway API `gateways` / `httproutes` / `referencegrants`, and `get` on the `coredns` / `kube-proxy` ConfigMaps in `kube-system`
 - **Network connectivity** to Kubernetes API server
 
 ## Configuration
 
-- Uses `~/.kube/config` or `KUBECONFIG` environment variable
+- Uses `KUBECONFIG` (a path list, as kubectl does), then `~/.kube/config`, then the in-cluster service account when run inside a pod
 - Set `NO_COLOR=1` to disable colored output
 - Uses current kubectl context
 - Supports all standard kubeconfig configurations

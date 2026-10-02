@@ -159,7 +159,7 @@ fn service_health(snapshot: &ClusterSnapshot) -> Vec<Finding> {
     let in_scope = snapshot
         .namespace
         .as_deref()
-        .map_or(true, |ns| ns == SYSTEM_NAMESPACE);
+        .is_none_or(|ns| ns == SYSTEM_NAMESPACE);
     if !in_scope || snapshot.is_unknown("services") {
         return findings;
     }
@@ -212,7 +212,7 @@ fn service_health(snapshot: &ClusterSnapshot) -> Vec<Finding> {
                     .map(String::as_str)
                     == Some(name)
         })
-        .flat_map(|s| s.endpoints.iter())
+        .flat_map(|s| s.endpoints.iter().flatten())
         .filter(|e| {
             !e.addresses.is_empty() && e.conditions.as_ref().and_then(|c| c.ready).unwrap_or(true)
         })

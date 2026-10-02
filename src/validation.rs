@@ -4,6 +4,19 @@ use kube::api::ListParams;
 use kube::{Api, Client};
 use regex::Regex;
 use std::env;
+use std::sync::LazyLock;
+
+/// Where a pod finds its service account credentials.
+const SERVICE_ACCOUNT_TOKEN: &str = "/var/run/secrets/kubernetes.io/serviceaccount/token";
+
+// Compiled once; both patterns are constants, so compilation cannot fail.
+static POD_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")
+        .expect("valid pod name regex")
+});
+static NAMESPACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$").expect("valid namespace regex")
+});
 
 /// Input validation utilities
 pub struct Validator;
@@ -24,10 +37,7 @@ impl Validator {
         }
 
         // Kubernetes naming convention: lowercase alphanumeric, hyphens, dots
-        let re = Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")
-            .map_err(|e| {
-            NetInspectError::Runtime(format!("Regex compilation failed: {}", e))
-        })?;
+        let re = &*POD_NAME_RE;
 
         if !re.is_match(name) {
             return Err(NetInspectError::InvalidInput(format!(
@@ -54,8 +64,7 @@ impl Validator {
         }
 
         // Kubernetes naming convention for namespaces
-        let re = Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
-            .map_err(|e| NetInspectError::Runtime(format!("Regex compilation failed: {}", e)))?;
+        let re = &*NAMESPACE_RE;
 
         if !re.is_match(namespace) {
             return Err(NetInspectError::InvalidInput(format!(
@@ -69,27 +78,52 @@ impl Validator {
 
     /// Validate environment and prerequisites
     pub fn validate_environment() -> NetInspectResult<()> {
-        // Check if kubeconfig exists
-        if let Ok(kubeconfig_path) = env::var("KUBECONFIG") {
-            if !std::path::Path::new(&kubeconfig_path).exists() {
-                return Err(NetInspectError::Configuration(format!(
-                    "KUBECONFIG file not found: {}",
-                    kubeconfig_path
-                )));
-            }
-        } else {
-            // Check default kubeconfig location
-            if let Ok(home) = env::var("HOME") {
-                let default_kubeconfig = format!("{}/.kube/config", home);
-                if !std::path::Path::new(&default_kubeconfig).exists() {
-                    return Err(NetInspectError::Configuration(
-                        "No kubeconfig found. Set KUBECONFIG environment variable or place config at ~/.kube/config".to_string()
-                    ));
-                }
-            }
-        }
+        let kubeconfig = env::var_os("KUBECONFIG").filter(|v| !v.is_empty());
+        let default_config = env::var_os("HOME")
+            .map(|home| std::path::Path::new(&home).join(".kube/config"))
+            .is_some_and(|p| p.exists());
+        let kubeconfig_files: Option<Vec<(std::path::PathBuf, bool)>> = kubeconfig.map(|v| {
+            env::split_paths(&v)
+                .filter(|p| !p.as_os_str().is_empty())
+                .map(|p| {
+                    let exists = p.exists();
+                    (p, exists)
+                })
+                .collect()
+        });
+        let in_cluster = env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+            && std::path::Path::new(SERVICE_ACCOUNT_TOKEN).exists();
+        Self::check_environment(kubeconfig_files.as_deref(), default_config, in_cluster)
+    }
 
-        Ok(())
+    /// Decide whether there is any way to reach a cluster. Mirrors the
+    /// client's own resolution order: `KUBECONFIG` (a path *list*), then
+    /// `~/.kube/config`, then the in-cluster service account.
+    pub fn check_environment(
+        kubeconfig_files: Option<&[(std::path::PathBuf, bool)]>,
+        default_config_exists: bool,
+        in_cluster: bool,
+    ) -> NetInspectResult<()> {
+        if let Some(files) = kubeconfig_files {
+            // kubectl merges every file in the list and ignores missing ones;
+            // only a list with no existing file is an error.
+            if files.iter().any(|(_, exists)| *exists) {
+                return Ok(());
+            }
+            let listed: Vec<String> = files.iter().map(|(p, _)| p.display().to_string()).collect();
+            return Err(NetInspectError::Configuration(format!(
+                "KUBECONFIG file not found: {}",
+                listed.join(", ")
+            )));
+        }
+        if default_config_exists || in_cluster {
+            return Ok(());
+        }
+        Err(NetInspectError::Configuration(
+            "No kubeconfig found. Set KUBECONFIG environment variable or place config at \
+             ~/.kube/config (inside a pod, the service account is used automatically)"
+                .to_string(),
+        ))
     }
 
     /// Validate pod IP address format
@@ -647,6 +681,28 @@ mod tests {
         assert!(Validator::validate_namespace("UPPERCASE").is_err());
         assert!(Validator::validate_namespace("under_score").is_err());
         assert!(Validator::validate_namespace("-starts-with-dash").is_err());
+    }
+
+    #[test]
+    fn environment_check_follows_client_resolution_order() {
+        use std::path::PathBuf;
+        let file = |p: &str, exists: bool| (PathBuf::from(p), exists);
+
+        // KUBECONFIG is a path list: one existing file is enough.
+        let list = [file("/missing", false), file("/home/me/.kube/prod", true)];
+        assert!(Validator::check_environment(Some(&list), false, false).is_ok());
+        let none = [file("/missing", false), file("/also-missing", false)];
+        let err = Validator::check_environment(Some(&none), true, true).unwrap_err();
+        assert!(err.plain_message().contains("/missing, /also-missing"));
+
+        // No KUBECONFIG: default file, or the in-cluster service account.
+        assert!(Validator::check_environment(None, true, false).is_ok());
+        assert!(
+            Validator::check_environment(None, false, true).is_ok(),
+            "running in a pod needs no kubeconfig"
+        );
+        let err = Validator::check_environment(None, false, false).unwrap_err();
+        assert!(err.plain_message().contains("No kubeconfig found"));
     }
 
     #[test]

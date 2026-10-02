@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use super::policy::{
     applies_to, evaluate, is_host_network, named_port, namespace_labels, ns_of, policy_id,
-    ports_match, selector_matches, Decision, Direction, Endpoint, Flow, Protocol,
+    policy_selects, ports_match, selector_matches, Decision, Direction, Endpoint, Flow, Protocol,
 };
 use crate::model::{Finding, Severity};
 use crate::snapshot::ClusterSnapshot;
@@ -190,9 +190,9 @@ fn selecting<'a>(snapshot: &'a ClusterSnapshot, pod: &Pod) -> Vec<&'a NetworkPol
         .iter()
         .filter(|p| {
             p.metadata.namespace.as_deref().unwrap_or("default") == ns_of(pod)
-                && p.spec.as_ref().is_some_and(|s| {
-                    selector_matches(&s.pod_selector, pod.metadata.labels.as_ref())
-                })
+                && p.spec
+                    .as_ref()
+                    .is_some_and(|s| policy_selects(&s.pod_selector, pod.metadata.labels.as_ref()))
         })
         .collect()
 }
@@ -242,8 +242,7 @@ fn check_policy(snapshot: &ClusterSnapshot, policy: &NetworkPolicy) -> Vec<Findi
         .pods
         .iter()
         .filter(|p| {
-            ns_of(p) == policy_ns
-                && selector_matches(&spec.pod_selector, p.metadata.labels.as_ref())
+            ns_of(p) == policy_ns && policy_selects(&spec.pod_selector, p.metadata.labels.as_ref())
         })
         .collect();
 
@@ -258,7 +257,9 @@ fn check_policy(snapshot: &ClusterSnapshot, policy: &NetworkPolicy) -> Vec<Findi
                 format!(
                     "podSelector {} matches no pod in namespace '{}', so this policy currently \
                      has no effect. A typo in a label is the usual cause.",
-                    describe_selector(&spec.pod_selector),
+                    spec.pod_selector
+                        .as_ref()
+                        .map_or_else(|| "{}".to_string(), describe_selector),
                     policy_ns
                 ),
             )
@@ -390,9 +391,10 @@ fn peer_matches_any(snapshot: &ClusterSnapshot, peer: &NetworkPolicyPeer, policy
             None => pod_ns == policy_ns,
         };
         ns_ok
-            && peer.pod_selector.as_ref().map_or(true, |sel| {
-                selector_matches(sel, pod.metadata.labels.as_ref())
-            })
+            && peer
+                .pod_selector
+                .as_ref()
+                .is_none_or(|sel| selector_matches(sel, pod.metadata.labels.as_ref()))
     })
 }
 

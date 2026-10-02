@@ -655,7 +655,7 @@ fn dns_outage_severities() {
     let r = mutate("healthy-cilium", |s| {
         s.deployments[0].status.as_mut().unwrap().ready_replicas = Some(0);
         for slice in &mut s.endpoint_slices {
-            for e in &mut slice.endpoints {
+            for e in slice.endpoints.iter_mut().flatten() {
                 e.conditions.as_mut().unwrap().ready = Some(false);
             }
         }

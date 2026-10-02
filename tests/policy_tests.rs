@@ -866,3 +866,20 @@ fn forbidden_admin_policies_make_the_verdict_incomplete() {
         .iter()
         .any(|c| c.contains("adminnetworkpolicies could not be listed")));
 }
+
+#[test]
+fn omitted_pod_selector_selects_every_pod_in_the_namespace() {
+    // Newer API versions make podSelector optional; absent means "all pods".
+    let snap = cluster(vec![policy(
+        "shop",
+        "deny-all",
+        json!({"policyTypes": ["Ingress"]}),
+    )]);
+    let v = check(&snap, WEB, DB, 5432);
+    assert!(!v.allowed);
+    assert_eq!(v.ingress.isolating, vec!["shop/deny-all"]);
+    assert!(
+        check(&snap, WEB, PROM, 9090).allowed,
+        "other namespaces are untouched"
+    );
+}

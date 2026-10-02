@@ -105,7 +105,7 @@ impl ClusterSnapshot {
     pub async fn collect(client: &Client, namespace: Option<&str>) -> NetInspectResult<Self> {
         let mut snap = ClusterSnapshot {
             schema_version: SCHEMA_VERSION,
-            collected_at: Some(k8s_openapi::chrono::Utc::now().to_rfc3339()),
+            collected_at: Some(k8s_openapi::jiff::Timestamp::now().to_string()),
             namespace: namespace.map(str::to_string),
             ..Default::default()
         };
