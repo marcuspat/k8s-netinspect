@@ -2,6 +2,7 @@
 //! Each submodule owns one check family and a block of stable finding ids.
 
 pub mod cni;
+pub mod dns;
 pub mod node;
 pub mod policy;
 pub mod policy_rules;
@@ -21,6 +22,7 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Report {
     findings.extend(node::analyze(snapshot));
     findings.extend(policy_rules::analyze(snapshot));
     findings.extend(service::analyze(snapshot));
+    findings.extend(dns::analyze(snapshot));
 
     findings.sort_by(|a, b| {
         b.severity

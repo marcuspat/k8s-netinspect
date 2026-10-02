@@ -60,7 +60,7 @@ Standing constraints:
   no ready endpoints; matched pods not Ready; `targetPort` (number or name)
   not exposed by the backing containers; LoadBalancer stuck without ingress
   address; headless/ExternalName handled without false positives.
-- [ ] **L4 — DNS diagnostics.** CoreDNS deployment readiness; `kube-dns`
+- [x] **L4 — DNS diagnostics.** CoreDNS deployment readiness; `kube-dns`
   Service has ready endpoints; Corefile parsing (missing `kubernetes` plugin,
   `forward` to itself / loop risk, no upstream); NodeLocal DNSCache presence
   and health; link to the L2 "DNS egress blocked" rule.
@@ -128,3 +128,7 @@ Standing constraints:
 - 2026-10-01 — L3 landed: rules `SVC-001..005`. 54 tests. A numeric
   `targetPort` mismatch is only flagged when every backend declares ports and
   none matches, since containers may listen on undeclared ports.
+- 2026-10-02 — L4 landed: rules `DNS-001..008` and a small Corefile parser.
+  60 tests. Fixtures now carry a healthy CoreDNS so they resemble real
+  clusters. Not detectable from the API: a node `resolv.conf` pointing at
+  127.0.0.53 (the usual cause of the CoreDNS loop crash).

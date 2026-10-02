@@ -35,7 +35,7 @@ fn healthy_cilium_is_clean() {
     assert_eq!((r.cni[0].ready, r.cni[0].desired), (Some(3), Some(3)));
     assert_eq!(r.cni_label(), "Cilium v1.16.1");
     assert_eq!(r.summary.nodes, 3);
-    assert_eq!(r.summary.pods, 2);
+    assert_eq!(r.summary.pods, 3);
     assert!(r.findings.is_empty(), "unexpected: {:?}", r.findings);
     assert_eq!(r.max_severity(), None);
 }
@@ -324,6 +324,9 @@ fn policy_rules_stay_quiet_without_the_data_to_judge() {
     snap.namespace = Some("shop".into());
     snap.pods
         .retain(|p| p.metadata.namespace.as_deref() == Some("shop"));
+    snap.services
+        .retain(|s| s.metadata.namespace.as_deref() == Some("shop"));
+    snap.endpoint_slices.clear();
     let r = analysis::analyze(&snap);
     assert_eq!(ids(&r), vec!["POL-001", "POL-002", "POL-004"]);
 }
@@ -593,4 +596,140 @@ fn service_rules_respect_missing_data_and_publish_not_ready() {
         .findings
         .iter()
         .all(|f| f.category != "service"));
+}
+
+// ---- DNS diagnostics (fixture: dns-broken) ----
+
+fn mutate(name: &str, f: impl FnOnce(&mut ClusterSnapshot)) -> Report {
+    let mut snap = ClusterSnapshot::load(&fixture_path(name)).unwrap();
+    f(&mut snap);
+    analysis::analyze(&snap)
+}
+
+fn dns_ids(r: &Report) -> Vec<(&str, Severity)> {
+    r.findings
+        .iter()
+        .filter(|f| f.category == "dns")
+        .map(|f| (f.id.as_str(), f.severity))
+        .collect()
+}
+
+#[test]
+fn dns_findings_on_broken_fixture() {
+    let r = report("dns-broken");
+    assert_eq!(
+        dns_ids(&r),
+        vec![
+            ("DNS-005", Severity::Error),
+            ("DNS-006", Severity::Error),
+            ("DNS-006", Severity::Error),
+            ("DNS-008", Severity::Error),
+            ("DNS-001", Severity::Warning),
+        ]
+    );
+    let details: Vec<&str> = r
+        .findings
+        .iter()
+        .filter(|f| f.id == "DNS-006")
+        .map(|f| f.detail.as_str())
+        .collect();
+    assert!(details
+        .iter()
+        .any(|d| d.contains("10.96.0.10") && d.contains("own ClusterIP")));
+    assert!(details
+        .iter()
+        .any(|d| d.contains("127.0.0.53:53") && d.contains("loopback")));
+    let degraded = r.findings.iter().find(|f| f.id == "DNS-001").unwrap();
+    assert!(degraded.detail.contains("1 of 2 replicas"));
+    assert_eq!(
+        degraded.resource.as_deref(),
+        Some("deployment/kube-system/coredns")
+    );
+    let nld = r.findings.iter().find(|f| f.id == "DNS-008").unwrap();
+    assert!(nld.detail.contains("2 of 3"));
+}
+
+#[test]
+fn dns_outage_severities() {
+    // No ready replica: Critical, and the Service has no ready endpoints.
+    let r = mutate("healthy-cilium", |s| {
+        s.deployments[0].status.as_mut().unwrap().ready_replicas = Some(0);
+        for slice in &mut s.endpoint_slices {
+            for e in &mut slice.endpoints {
+                e.conditions.as_mut().unwrap().ready = Some(false);
+            }
+        }
+    });
+    assert_eq!(
+        dns_ids(&r),
+        vec![
+            ("DNS-001", Severity::Critical),
+            ("DNS-003", Severity::Critical)
+        ]
+    );
+
+    // Scaled to zero.
+    let r = mutate("healthy-cilium", |s| {
+        s.deployments[0].spec.as_mut().unwrap().replicas = Some(0);
+    });
+    assert_eq!(r.findings[0].title, "Cluster DNS is scaled to zero");
+
+    // Service deleted.
+    let r = mutate("healthy-cilium", |s| s.services.clear());
+    assert_eq!(dns_ids(&r), vec![("DNS-004", Severity::Error)]);
+
+    // No DNS workload at all.
+    let r = mutate("healthy-cilium", |s| s.deployments.clear());
+    assert_eq!(dns_ids(&r), vec![("DNS-002", Severity::Warning)]);
+}
+
+#[test]
+fn corefile_without_forward_only_warns() {
+    let r = mutate("healthy-cilium", |s| {
+        s.config_maps[0].data.as_mut().unwrap().insert(
+            "Corefile".into(),
+            ".:53 {\n    kubernetes cluster.local in-addr.arpa ip6.arpa\n    cache 30\n}\n".into(),
+        );
+    });
+    assert_eq!(dns_ids(&r), vec![("DNS-007", Severity::Warning)]);
+}
+
+#[test]
+fn dns_rules_stay_quiet_without_the_data_to_judge() {
+    let forbid = |s: &mut ClusterSnapshot, resource: &str| {
+        s.collection_errors
+            .push(k8s_netinspect::snapshot::CollectionError {
+                resource: resource.into(),
+                message: "forbidden".into(),
+            })
+    };
+    // Deployments forbidden: cannot claim DNS is missing; Corefile unknown too.
+    let r = mutate("healthy-cilium", |s| {
+        s.deployments.clear();
+        s.config_maps.clear();
+        forbid(s, "deployments");
+    });
+    assert!(dns_ids(&r).is_empty(), "{:?}", dns_ids(&r));
+
+    // Snapshot scoped to another namespace: kube-system Services are not in it.
+    let r = mutate("healthy-cilium", |s| {
+        s.namespace = Some("default".into());
+        s.services.clear();
+        s.endpoint_slices.clear();
+    });
+    assert!(dns_ids(&r).is_empty(), "{:?}", dns_ids(&r));
+
+    // EndpointSlices forbidden: no "no ready endpoints" claim.
+    let r = mutate("healthy-cilium", |s| {
+        s.endpoint_slices.clear();
+        forbid(s, "endpointslices");
+    });
+    assert!(dns_ids(&r).is_empty(), "{:?}", dns_ids(&r));
+
+    // GKE-style kube-dns Deployment with no CoreDNS ConfigMap is healthy.
+    let r = mutate("healthy-cilium", |s| {
+        s.deployments[0].metadata.name = Some("kube-dns".into());
+        s.config_maps.clear();
+    });
+    assert!(dns_ids(&r).is_empty(), "{:?}", dns_ids(&r));
 }
