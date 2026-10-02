@@ -53,6 +53,14 @@ pub fn render_text(report: &Report) -> String {
         }
     }
 
+    if let Some(proxy) = &report.service_proxy {
+        out.push_str(&format!(
+            "{} Service proxy: {}\n",
+            ok,
+            proxy.label().green()
+        ));
+    }
+
     if report.summary.nodes == 0 {
         out.push_str(&format!(
             "{} {}\n",

@@ -28,7 +28,7 @@
           "containerRuntimeVersion": "containerd://1.7.20",
           "kernelVersion": "6.8.0",
           "kubeProxyVersion": "v1.30.4",
-          "kubeletVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4+k3s1",
           "machineID": "m",
           "operatingSystem": "linux",
           "osImage": "Ubuntu 24.04",
@@ -61,7 +61,7 @@
           "containerRuntimeVersion": "containerd://1.7.20",
           "kernelVersion": "6.8.0",
           "kubeProxyVersion": "v1.30.4",
-          "kubeletVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4+k3s1",
           "machineID": "m",
           "operatingSystem": "linux",
           "osImage": "Ubuntu 24.04",
@@ -280,5 +280,6 @@
         "Corefile": ".:53 {\n    errors\n    health {\n       lameduck 5s\n    }\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n       pods insecure\n       fallthrough in-addr.arpa ip6.arpa\n       ttl 30\n    }\n    prometheus :9153\n    forward . /etc/resolv.conf {\n       max_concurrent 1000\n    }\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"
       }
     }
-  ]
+  ],
+  "cluster_version": "v1.30.4+k3s1"
 }

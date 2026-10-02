@@ -104,6 +104,45 @@
         "numberMisscheduled": 0,
         "numberReady": 2
       }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-proxy"
+        }
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-proxy"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-proxy"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "kube-proxy",
+                "image": "registry.k8s.io/kube-proxy:v1.30.4"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
     }
   ],
   "pods": [
@@ -606,6 +645,18 @@
       "data": {
         "Corefile": ".:53 {\n    errors\n    health {\n       lameduck 5s\n    }\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n       pods insecure\n       fallthrough in-addr.arpa ip6.arpa\n       ttl 30\n    }\n    prometheus :9153\n    forward . /etc/resolv.conf {\n       max_concurrent 1000\n    }\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"
       }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "config.conf": "apiVersion: kubeproxy.config.k8s.io/v1alpha1\nkind: KubeProxyConfiguration\nclusterCIDR: 10.0.0.0/16\niptables:\n  masqueradeAll: false\nipvs:\n  scheduler: \"\"\nmode: \"\"\n"
+      }
     }
-  ]
+  ],
+  "cluster_version": "v1.30.4"
 }

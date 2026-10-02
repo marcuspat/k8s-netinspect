@@ -64,7 +64,7 @@ Standing constraints:
   Service has ready endpoints; Corefile parsing (missing `kubernetes` plugin,
   `forward` to itself / loop risk, no upstream); NodeLocal DNSCache presence
   and health; link to the L2 "DNS egress blocked" rule.
-- [ ] **L5 — kube-proxy and dataplane mode.** Mode from the kube-proxy
+- [x] **L5 — kube-proxy and dataplane mode.** Mode from the kube-proxy
   ConfigMap (iptables / ipvs / nftables); kube-proxy DaemonSet health;
   kube-proxy absent without a replacement (Cilium KPR, kube-router,
   Dataplane V2); kube-proxy/kubelet version skew beyond the supported window.
@@ -132,3 +132,8 @@ Standing constraints:
   60 tests. Fixtures now carry a healthy CoreDNS so they resemble real
   clusters. Not detectable from the API: a node `resolv.conf` pointing at
   127.0.0.53 (the usual cause of the CoreDNS loop crash).
+- 2026-10-02 — L5 landed: `service_proxy` in the report, rules
+  `PROXY-001..004`, snapshot now records the API server version and the
+  `cilium-config` ConfigMap. 64 tests. Known gaps: Calico eBPF and Antrea
+  `proxyAll` are not recognised as kube-proxy replacements; distributions
+  other than k3s that embed kube-proxy would get a `PROXY-002` warning.

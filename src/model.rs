@@ -97,6 +97,31 @@ pub enum CniRole {
     Meta,
 }
 
+/// What implements Service load-balancing (ClusterIP/NodePort) on the nodes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceProxy {
+    /// `kube-proxy`, or the CNI that replaces it.
+    pub implementation: String,
+    /// kube-proxy mode: `iptables`, `ipvs`, `nftables`, `kernelspace`.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub version: Option<String>,
+}
+
+impl ServiceProxy {
+    pub fn label(&self) -> String {
+        let mut out = self.implementation.clone();
+        if let Some(mode) = &self.mode {
+            out.push_str(&format!(" ({mode})"));
+        }
+        if let Some(version) = &self.version {
+            out.push_str(&format!(" {version}"));
+        }
+        out
+    }
+}
+
 /// Counts of what the report was computed from.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Summary {
@@ -112,6 +137,8 @@ pub struct Report {
     pub tool_version: String,
     pub summary: Summary,
     pub cni: Vec<CniPlugin>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub service_proxy: Option<ServiceProxy>,
     pub findings: Vec<Finding>,
 }
 

@@ -17,6 +17,7 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 - NetworkPolicy findings: egress policies that block DNS, policies that select no pods, peers that match nothing, undefined named ports
 - Service findings: selector matches no pods, no ready endpoints, `targetPort` the backing pods do not expose, LoadBalancer without an address, selector-less Service without endpoints
 - DNS findings: CoreDNS down, degraded or scaled to zero; kube-dns Service missing or without ready endpoints; Corefile with no `kubernetes` plugin, no upstream, or a `forward` that points back at CoreDNS; NodeLocal DNSCache agents not ready
+- Service proxy: identifies kube-proxy (mode and version) or the CNI replacing it; flags kube-proxy not ready on every node, no Service proxy at all, kube-proxy left running next to a full replacement, and version skew against the API server and kubelets
 - `--output json` for scripts and CI
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
@@ -127,6 +128,7 @@ k8s-netinspect --version
 🔍 Starting network diagnosis...
 ✓ CNI detected: Calico v3.28.0
   • Calico (daemonset/calico-system/calico-node): 2/3 agents ready
+✓ Service proxy: kube-proxy (ipvs) v1.30.4
 ✓ Found 3 nodes
 ✓ Found 2 pods cluster-wide
 

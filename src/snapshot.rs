@@ -31,7 +31,13 @@ const SYSTEM_NAMESPACE: &str = "kube-system";
 
 /// ConfigMaps in `kube-system` that carry network configuration. Only these
 /// are collected — never arbitrary ConfigMaps.
-const NETWORK_CONFIG_MAPS: &[&str] = &["coredns", "kube-proxy", "node-local-dns", "kube-dns"];
+const NETWORK_CONFIG_MAPS: &[&str] = &[
+    "coredns",
+    "kube-proxy",
+    "node-local-dns",
+    "kube-dns",
+    "cilium-config",
+];
 
 const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
 const REDACTED: &str = "<redacted>";
@@ -45,6 +51,8 @@ pub struct ClusterSnapshot {
     pub collected_at: Option<String>,
     /// Namespace the workload objects were scoped to (`None` = cluster-wide).
     pub namespace: Option<String>,
+    /// API server `gitVersion`, e.g. `v1.30.4`.
+    pub cluster_version: Option<String>,
     pub nodes: Vec<Node>,
     pub namespaces: Vec<Namespace>,
     pub pods: Vec<Pod>,
@@ -82,6 +90,11 @@ impl ClusterSnapshot {
             ..Default::default()
         };
         let mut errors = Vec::new();
+
+        // Best-effort: /version is readable by any authenticated user.
+        if let Ok(Ok(info)) = tokio::time::timeout(LIST_TIMEOUT, client.apiserver_version()).await {
+            snap.cluster_version = Some(info.git_version);
+        }
 
         let (nodes, namespaces, pods, services, slices, policies, daemon_sets, deployments) = tokio::join!(
             list(Api::<Node>::all(client.clone()), "nodes"),

@@ -6,6 +6,7 @@ pub mod dns;
 pub mod node;
 pub mod policy;
 pub mod policy_rules;
+pub mod proxy;
 pub mod service;
 
 use crate::model::{Finding, Report, Severity, Summary};
@@ -23,6 +24,8 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Report {
     findings.extend(policy_rules::analyze(snapshot));
     findings.extend(service::analyze(snapshot));
     findings.extend(dns::analyze(snapshot));
+    let service_proxy = proxy::detect(snapshot, &plugins);
+    findings.extend(proxy::analyze(snapshot, &plugins, service_proxy.as_ref()));
 
     findings.sort_by(|a, b| {
         b.severity
@@ -39,6 +42,7 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Report {
             namespace: snapshot.namespace.clone(),
         },
         cni: plugins,
+        service_proxy,
         findings,
     }
 }

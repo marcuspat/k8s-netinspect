@@ -733,3 +733,149 @@ fn dns_rules_stay_quiet_without_the_data_to_judge() {
     });
     assert!(dns_ids(&r).is_empty(), "{:?}", dns_ids(&r));
 }
+
+// ---- Service proxy (fixture: proxy-broken) ----
+
+fn proxy_findings(r: &Report) -> Vec<(&str, Severity, &str)> {
+    r.findings
+        .iter()
+        .filter(|f| f.category == "proxy")
+        .map(|f| (f.id.as_str(), f.severity, f.title.as_str()))
+        .collect()
+}
+
+#[test]
+fn service_proxy_is_identified_per_fixture() {
+    let label = |name: &str| report(name).service_proxy.map(|p| p.label());
+    assert_eq!(
+        label("healthy-cilium").as_deref(),
+        Some("Cilium (kube-proxy replacement)")
+    );
+    assert_eq!(
+        label("calico-degraded").as_deref(),
+        Some("kube-proxy (ipvs) v1.30.4")
+    );
+    // Empty mode in the ConfigMap means the Linux default.
+    assert_eq!(
+        label("shop-policies").as_deref(),
+        Some("kube-proxy (iptables) v1.30.4")
+    );
+    assert_eq!(
+        label("services-broken").as_deref(),
+        Some("kube-proxy (nftables) v1.30.4")
+    );
+    // k3s embeds kube-proxy: nothing to identify, and no false alarm.
+    let k3s = report("k3s-flannel");
+    assert_eq!(k3s.service_proxy, None);
+    assert!(proxy_findings(&k3s).is_empty());
+}
+
+#[test]
+fn proxy_findings_on_broken_fixture() {
+    let r = report("proxy-broken");
+    assert_eq!(
+        proxy_findings(&r),
+        vec![
+            (
+                "PROXY-001",
+                Severity::Error,
+                "kube-proxy is not ready on every node"
+            ),
+            (
+                "PROXY-003",
+                Severity::Warning,
+                "kube-proxy runs alongside a kube-proxy replacement"
+            ),
+            (
+                "PROXY-004",
+                Severity::Warning,
+                "kube-proxy is too old for the API server"
+            ),
+            (
+                "PROXY-004",
+                Severity::Warning,
+                "kube-proxy and kubelet versions are too far apart"
+            ),
+        ]
+    );
+    let skew = r
+        .findings
+        .iter()
+        .find(|f| f.title.contains("too old for the API server"))
+        .unwrap();
+    assert!(
+        skew.detail.contains("v1.26.15 is 4 minor versions behind"),
+        "{}",
+        skew.detail
+    );
+}
+
+#[test]
+fn proxy_edge_cases() {
+    // No kube-proxy and Cilium without replacement enabled: nothing serves Services.
+    let r = mutate("healthy-cilium", |s| {
+        s.config_maps
+            .retain(|c| c.metadata.name.as_deref() != Some("cilium-config"))
+    });
+    assert_eq!(
+        proxy_findings(&r),
+        vec![("PROXY-002", Severity::Warning, "No Service proxy detected")]
+    );
+
+    // ...unless kube-proxy runs as static pods (GKE, RKE2).
+    let r = mutate("healthy-cilium", |s| {
+        s.config_maps
+            .retain(|c| c.metadata.name.as_deref() != Some("cilium-config"));
+        let mut pod = s.pods[0].clone();
+        pod.metadata.namespace = Some("kube-system".into());
+        pod.metadata.name = Some("kube-proxy-gke-pool-1-abcd".into());
+        s.pods.push(pod);
+    });
+    assert!(proxy_findings(&r).is_empty());
+    assert_eq!(
+        r.service_proxy.unwrap().implementation,
+        "kube-proxy (static pods)"
+    );
+
+    // All kube-proxy pods down is Critical.
+    let r = mutate("shop-policies", |s| {
+        for d in &mut s.daemon_sets {
+            if d.metadata.name.as_deref() == Some("kube-proxy") {
+                d.status.as_mut().unwrap().number_ready = 0;
+            }
+        }
+    });
+    assert_eq!(proxy_findings(&r)[0].1, Severity::Critical);
+
+    // kube-proxy newer than the API server.
+    let r = mutate("shop-policies", |s| {
+        s.cluster_version = Some("v1.29.2".into())
+    });
+    assert_eq!(
+        proxy_findings(&r),
+        vec![(
+            "PROXY-004",
+            Severity::Warning,
+            "kube-proxy is newer than the API server"
+        )]
+    );
+
+    // DaemonSets forbidden, or a snapshot scoped away from kube-system: no claims.
+    let r = mutate("healthy-cilium", |s| {
+        s.config_maps.clear();
+        s.daemon_sets.clear();
+        s.collection_errors
+            .push(k8s_netinspect::snapshot::CollectionError {
+                resource: "daemonsets".into(),
+                message: "forbidden".into(),
+            });
+    });
+    assert!(proxy_findings(&r).is_empty());
+    let r = mutate("healthy-cilium", |s| {
+        s.config_maps.clear();
+        s.namespace = Some("default".into());
+        s.services.clear();
+        s.endpoint_slices.clear();
+    });
+    assert!(proxy_findings(&r).is_empty());
+}
