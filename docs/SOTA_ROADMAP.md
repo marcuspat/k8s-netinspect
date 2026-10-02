@@ -73,7 +73,7 @@ Standing constraints:
   `podCIDR`; overlapping node `podCIDR`s; per-node IP exhaustion; `hostPort`
   collisions. Replace the regex IP validation with `std::net::IpAddr` so
   compressed IPv6 and dual-stack `podIPs` work.
-- [ ] **L7 — CI-grade output.** `--fail-on <severity>` exit status; SARIF
+- [x] **L7 — CI-grade output.** `--fail-on <severity>` exit status; SARIF
   2.1.0 and JUnit XML formats; `--only` / `--skip` rule filters; a `rules`
   command and generated `docs/RULES.md` catalog (id, severity, meaning, fix).
 - [ ] **L8 — Ingress and Gateway API.** Ingress backends pointing at missing
@@ -143,3 +143,10 @@ Standing constraints:
   `hostPort` collisions — the scheduler already refuses to co-locate
   conflicting hostPorts, so the rule could never fire. POD-001 infers a
   sandbox failure from pod status and age; it does not read Events.
+- 2026-10-02 — L7 landed: `--fail-on` (exit 7), `-o sarif|junit`, `--only` /
+  `--skip`, `rules` command, `src/rules.rs` catalog and generated
+  `docs/RULES.md` (33 rules). 80 tests, including one that fails if an
+  analyzer emits an id missing from the catalog. SARIF results carry logical
+  locations only (cluster objects, not files), so GitHub code scanning may
+  not display them inline; SARIF was not validated against the official
+  JSON schema here.

@@ -6,12 +6,17 @@ use colored::*;
 
 use crate::errors::{NetInspectError, NetInspectResult};
 use crate::model::{Finding, Report, Severity};
+use crate::rules::{self, Filter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum)]
 pub enum OutputFormat {
     #[default]
     Text,
     Json,
+    /// SARIF 2.1.0, for code-scanning dashboards
+    Sarif,
+    /// JUnit XML, one test case per rule
+    Junit,
 }
 
 pub fn render(report: &Report, format: OutputFormat) -> NetInspectResult<String> {
@@ -19,6 +24,9 @@ pub fn render(report: &Report, format: OutputFormat) -> NetInspectResult<String>
         OutputFormat::Text => Ok(render_text(report)),
         OutputFormat::Json => serde_json::to_string_pretty(report)
             .map_err(|e| NetInspectError::Runtime(format!("Failed to serialize report: {e}"))),
+        OutputFormat::Sarif => serde_json::to_string_pretty(&render_sarif(report))
+            .map_err(|e| NetInspectError::Runtime(format!("Failed to serialize SARIF: {e}"))),
+        OutputFormat::Junit => Ok(render_junit(report, &Filter::default())),
     }
 }
 
@@ -122,5 +130,156 @@ pub fn render_text(report: &Report) -> String {
             out.push_str(&format!("    {} {}\n", "→".green(), fix));
         }
     }
+    out
+}
+
+const INFO_URI: &str = "https://github.com/marcuspat/k8s-netinspect";
+
+fn sarif_level(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Critical | Severity::Error => "error",
+        Severity::Warning => "warning",
+        Severity::Info => "note",
+    }
+}
+
+/// SARIF 2.1.0. Findings are about cluster objects, not files, so each
+/// result carries a logical location (`kind/namespace/name`).
+pub fn render_sarif(report: &Report) -> serde_json::Value {
+    use serde_json::json;
+
+    let rules: Vec<serde_json::Value> = rules::RULES
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "name": r.title,
+                "shortDescription": {"text": r.title},
+                "fullDescription": {"text": r.description},
+                "helpUri": format!("{INFO_URI}/blob/main/docs/RULES.md"),
+                "defaultConfiguration": {"level": sarif_level(r.severity)},
+                "properties": {"category": r.category, "maxSeverity": r.severity.to_string()},
+            })
+        })
+        .collect();
+
+    let results: Vec<serde_json::Value> = report
+        .findings
+        .iter()
+        .map(|f| {
+            let mut text = format!("{}: {}", f.title, f.detail);
+            if let Some(fix) = &f.remediation {
+                text.push_str(&format!(" Fix: {fix}"));
+            }
+            let mut result = json!({
+                "ruleId": f.id,
+                "level": sarif_level(f.severity),
+                "message": {"text": text},
+                "properties": {"severity": f.severity.to_string(), "category": f.category},
+            });
+            if let Some(index) = rules::RULES.iter().position(|r| r.id == f.id) {
+                result["ruleIndex"] = json!(index);
+            }
+            if let Some(resource) = &f.resource {
+                result["locations"] = json!([{
+                    "logicalLocations": [{"fullyQualifiedName": resource, "kind": "resource"}]
+                }]);
+            }
+            result
+        })
+        .collect();
+
+    json!({
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {"driver": {
+                "name": "k8s-netinspect",
+                "version": report.tool_version,
+                "informationUri": INFO_URI,
+                "rules": rules,
+            }},
+            "results": results,
+        }],
+    })
+}
+
+fn xml_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            // XML 1.0 forbids most control characters outright.
+            c if c.is_control() && c != '\n' && c != '\t' => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// JUnit XML: one test case per rule that was in scope. A rule with findings
+/// at Warning or above fails, with one `<failure>` per finding; Info findings
+/// are attached as `<system-out>` and do not fail the case.
+pub fn render_junit(report: &Report, filter: &Filter) -> String {
+    let in_scope: Vec<&rules::Rule> = rules::RULES
+        .iter()
+        .filter(|r| filter.allows(r.id))
+        .collect();
+    let failed = in_scope
+        .iter()
+        .filter(|r| {
+            report
+                .findings
+                .iter()
+                .any(|f| f.id == r.id && f.severity >= Severity::Warning)
+        })
+        .count();
+
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    out.push_str(&format!(
+        "<testsuites name=\"k8s-netinspect\" tests=\"{0}\" failures=\"{1}\">\n  <testsuite name=\"k8s-netinspect\" tests=\"{0}\" failures=\"{1}\" errors=\"0\" skipped=\"0\">\n",
+        in_scope.len(),
+        failed
+    ));
+    for r in in_scope {
+        out.push_str(&format!(
+            "    <testcase classname=\"k8s-netinspect.{}\" name=\"{} {}\"",
+            xml_escape(r.category),
+            r.id,
+            xml_escape(r.title)
+        ));
+        let findings: Vec<&Finding> = report.findings.iter().filter(|f| f.id == r.id).collect();
+        if findings.is_empty() {
+            out.push_str("/>\n");
+            continue;
+        }
+        out.push_str(">\n");
+        for f in &findings {
+            let resource = f.resource.as_deref().unwrap_or("cluster");
+            let mut body = f.detail.clone();
+            if let Some(fix) = &f.remediation {
+                body.push_str(&format!("\nFix: {fix}"));
+            }
+            if f.severity >= Severity::Warning {
+                out.push_str(&format!(
+                    "      <failure type=\"{}\" message=\"{}\">{}</failure>\n",
+                    f.severity,
+                    xml_escape(&format!("{}: {}", resource, f.title)),
+                    xml_escape(&body)
+                ));
+            } else {
+                out.push_str(&format!(
+                    "      <system-out>{}</system-out>\n",
+                    xml_escape(&format!("{}: {} — {}", resource, f.title, body))
+                ));
+            }
+        }
+        out.push_str("    </testcase>\n");
+    }
+    out.push_str("  </testsuite>\n</testsuites>\n");
     out
 }

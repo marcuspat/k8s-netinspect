@@ -5,7 +5,19 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// How bad a finding is. Ordered: `Info < Warning < Error < Critical`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,

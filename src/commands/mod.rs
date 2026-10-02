@@ -14,6 +14,7 @@ use crate::analysis::policy::{
 use crate::errors::{NetInspectError, NetInspectResult};
 use crate::model::Report;
 use crate::output::{self, OutputFormat};
+use crate::rules::Filter;
 use crate::snapshot::ClusterSnapshot;
 use crate::validation::Validator;
 
@@ -25,7 +26,18 @@ pub enum Source<'a> {
     File(&'a Path),
 }
 
-pub async fn diagnose(source: Source<'_>, format: OutputFormat) -> NetInspectResult<Report> {
+pub async fn diagnose(
+    source: Source<'_>,
+    format: OutputFormat,
+    filter: &Filter,
+) -> NetInspectResult<Report> {
+    let unknown = filter.unknown_selectors();
+    if !unknown.is_empty() {
+        return Err(NetInspectError::InvalidInput(format!(
+            "Unknown rule selector(s): {}. Run `k8s-netinspect rules` for the catalog.",
+            unknown.join(", ")
+        )));
+    }
     if format == OutputFormat::Text {
         println!("{}", "🔍 Starting network diagnosis...".cyan().bold());
     }
@@ -35,12 +47,24 @@ pub async fn diagnose(source: Source<'_>, format: OutputFormat) -> NetInspectRes
         Source::File(path) => ClusterSnapshot::load(path)?,
     };
 
-    let report = analysis::analyze(&snapshot);
-    print!("{}", output::render(&report, format)?);
-    if format == OutputFormat::Json {
-        println!();
+    let mut report = analysis::analyze(&snapshot);
+    filter.apply(&mut report.findings);
+    match format {
+        // JUnit lists the rules that were in scope, so it needs the filter.
+        OutputFormat::Junit => print!("{}", output::render_junit(&report, filter)),
+        OutputFormat::Text => print!("{}", output::render(&report, format)?),
+        _ => println!("{}", output::render(&report, format)?),
     }
     Ok(report)
+}
+
+/// Print the rule catalog.
+pub fn rules(markdown: bool) {
+    if markdown {
+        print!("{}", crate::rules::markdown());
+    } else {
+        print!("{}", crate::rules::text());
+    }
 }
 
 /// Write a redacted cluster network snapshot to `file`, or stdout.
@@ -119,6 +143,11 @@ pub async fn can_reach(
                 format!("Failed to serialize verdict: {e}")
             ))?
         ),
+        OutputFormat::Sarif | OutputFormat::Junit => {
+            return Err(NetInspectError::InvalidInput(
+                "can-reach supports --output text or json".to_string(),
+            ))
+        }
     }
     Ok(report)
 }

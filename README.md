@@ -19,7 +19,7 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 - DNS findings: CoreDNS down, degraded or scaled to zero; kube-dns Service missing or without ready endpoints; Corefile with no `kubernetes` plugin, no upstream, or a `forward` that points back at CoreDNS; NodeLocal DNSCache agents not ready
 - Service proxy: identifies kube-proxy (mode and version) or the CNI replacing it; flags kube-proxy not ready on every node, no Service proxy at all, kube-proxy left running next to a full replacement, and version skew against the API server and kubelets
 - Pod networking and IPAM: pods stuck without a network sandbox (grouped by node), duplicate pod IPs, overlapping node pod CIDRs, and — for CNIs that allocate from the node range — pod IPs outside it and ranges about to run out; IPv6 and dual-stack aware
-- `--output json` for scripts and CI
+- CI-friendly: `--output json|sarif|junit`, `--fail-on <severity>`, `--only` / `--skip` rule filters, and a rule catalog ([docs/RULES.md](docs/RULES.md))
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
 - Pod connectivity testing with HTTP checks
@@ -84,11 +84,25 @@ Exit status: `0` allowed, `6` blocked, anything else is an error (for example `4
 
 This evaluates `networking.k8s.io/v1` NetworkPolicy only. It does not see CNI-native policies (CiliumNetworkPolicy, Calico GlobalNetworkPolicy), AdminNetworkPolicy, service meshes or cloud firewalls, and it sends no traffic — "allowed" means no NetworkPolicy blocks the flow, not that the connection will succeed.
 
-### JSON output
+### Output formats and CI gating
 
 ```bash
-k8s-netinspect diagnose --output json
+k8s-netinspect diagnose --output json     # stable machine-readable report
+k8s-netinspect diagnose --output sarif    # SARIF 2.1.0 for code-scanning dashboards
+k8s-netinspect diagnose --output junit    # one test case per rule
+
+# Fail the pipeline (exit 7) on any finding at or above a severity
+k8s-netinspect diagnose --fail-on error
+
+# Select rules by id or family
+k8s-netinspect diagnose --only DNS,POL-001
+k8s-netinspect diagnose --skip SVC-004 --fail-on warning
+
+# List every rule
+k8s-netinspect rules
 ```
+
+Exit status: `0` success, `6` `can-reach` flow blocked, `7` `--fail-on` threshold met; `1`–`5` are errors (bad input, no cluster access, permission denied, ...).
 
 ### Snapshot and offline analysis
 

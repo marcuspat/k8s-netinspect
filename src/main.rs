@@ -5,7 +5,9 @@ use std::process;
 use k8s_netinspect::analysis::policy::Protocol;
 use k8s_netinspect::commands::{self, Source};
 use k8s_netinspect::errors::NetInspectResult;
+use k8s_netinspect::model::Severity;
 use k8s_netinspect::output::OutputFormat;
+use k8s_netinspect::rules::Filter;
 use k8s_netinspect::validation::Validator;
 
 #[derive(Parser)]
@@ -30,6 +32,21 @@ enum Commands {
         /// Analyze a snapshot file instead of a live cluster (no API access needed)
         #[arg(long, value_name = "FILE")]
         from_snapshot: Option<PathBuf>,
+        /// Exit with status 7 if any finding is at or above this severity
+        #[arg(long, value_enum, value_name = "SEVERITY")]
+        fail_on: Option<Severity>,
+        /// Report only these rules: ids (DNS-006) or families (DNS), comma-separated
+        #[arg(long, value_delimiter = ',', value_name = "RULES")]
+        only: Vec<String>,
+        /// Do not report these rules: ids or families, comma-separated
+        #[arg(long, value_delimiter = ',', value_name = "RULES")]
+        skip: Vec<String>,
+    },
+    /// List every rule diagnose can report
+    Rules {
+        /// Output format
+        #[arg(long, value_enum, default_value_t = RulesFormat::Text)]
+        format: RulesFormat,
     },
     /// Capture a redacted snapshot of the cluster's network state as JSON
     Snapshot {
@@ -76,6 +93,12 @@ enum Commands {
     Version,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum RulesFormat {
+    Text,
+    Markdown,
+}
+
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum ProtocolArg {
     Tcp,
@@ -97,6 +120,9 @@ impl From<ProtocolArg> for Protocol {
 /// error exit code so scripts can tell "blocked" from "could not evaluate".
 const EXIT_BLOCKED: i32 = 6;
 
+/// Exit status of `diagnose --fail-on` when a finding meets the threshold.
+const EXIT_FINDINGS: i32 = 7;
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -116,14 +142,32 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
             namespace,
             output,
             from_snapshot,
+            fail_on,
+            only,
+            skip,
         } => {
-            if let Some(path) = from_snapshot {
-                commands::diagnose(Source::File(path), *output).await?;
-                return Ok(());
+            let filter = Filter {
+                only: only.clone(),
+                skip: skip.clone(),
+            };
+            let source = match from_snapshot {
+                Some(path) => Source::File(path),
+                None => {
+                    let namespace = namespace.as_deref();
+                    validate_live(namespace).await?;
+                    Source::Live { namespace }
+                }
+            };
+            let report = commands::diagnose(source, *output, &filter).await?;
+            if let (Some(threshold), Some(worst)) = (fail_on, report.max_severity()) {
+                if worst >= *threshold {
+                    process::exit(EXIT_FINDINGS);
+                }
             }
-            let namespace = namespace.as_deref();
-            validate_live(namespace).await?;
-            commands::diagnose(Source::Live { namespace }, *output).await?;
+            Ok(())
+        }
+        Commands::Rules { format } => {
+            commands::rules(*format == RulesFormat::Markdown);
             Ok(())
         }
         Commands::Snapshot { namespace, file } => {
