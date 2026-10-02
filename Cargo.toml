@@ -1,10 +1,10 @@
 [package]
 name = "k8s-netinspect"
-version = "0.2.0-dev"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.89"
 authors = ["Marcus Patman"]
-description = "A minimal Kubernetes network inspection tool for diagnosing CNI and pod connectivity"
+description = "Kubernetes network diagnostics: CNI, NetworkPolicy reachability, Services, DNS, Ingress and Gateway API"
 homepage = "https://github.com/marcuspat/k8s-netinspect"
 documentation = "https://github.com/marcuspat/k8s-netinspect"
 repository = "https://github.com/marcuspat/k8s-netinspect"
@@ -13,9 +13,9 @@ license = "MIT"
 keywords = ["kubernetes", "networking", "cni", "diagnostics", "k8s"]
 categories = ["command-line-utilities", "network-programming"]
 exclude = [
-    "test-*.sh",
-    "live-cluster-test.sh",
+    "scripts/",
     "tests/fixtures/",
+    "test-resources.yaml",
     "docs/",
     "demo/",
     "*.gif",

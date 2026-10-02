@@ -14,7 +14,9 @@ use k8s_netinspect::validation::Validator;
 
 #[derive(Parser)]
 #[command(name = "k8s-netinspect")]
-#[command(about = "A minimal Kubernetes network inspection tool")]
+#[command(
+    about = "Kubernetes network diagnostics: what is broken, and which object is responsible"
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -23,7 +25,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Diagnose CNI and basic network configuration
+    /// Run every network check and report findings with a suggested fix
     Diagnose {
         /// Target namespace for pod diagnostics (default: cluster-wide)
         #[arg(short, long, conflicts_with = "from_snapshot")]
@@ -137,7 +139,7 @@ enum Commands {
               value_parser = clap::value_parser!(u32).range(1..=60))]
         probe_timeout: u32,
     },
-    /// Test pod connectivity
+    /// HTTP GET to a pod IP on port 80, from this machine (legacy; see can-reach --probe)
     TestPod {
         /// Pod name to test
         #[arg(short, long)]

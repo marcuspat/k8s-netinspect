@@ -682,7 +682,7 @@ pub fn version() {
         "🔧".yellow().bold(),
         env!("CARGO_PKG_VERSION").green()
     );
-    println!("A minimal Kubernetes network inspection tool");
+    println!("Kubernetes network diagnostics");
 }
 
 async fn test_connectivity_with_retries(pod_ip: &str, max_retries: u32) -> NetInspectResult<()> {

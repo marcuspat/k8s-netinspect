@@ -111,11 +111,89 @@ Standing constraints:
   resolved and changed findings between two snapshots (incident before/after,
   upgrade verification); `diagnose --watch <interval>` printing only deltas;
   Prometheus text exposition of finding counts by rule and severity.
-- [ ] **L15 — Wrap-up.** README rewritten around the new commands with real
+- [x] **L15 — Wrap-up.** README rewritten around the new commands with real
   output captured from fixtures; `CHANGELOG.md`; `docs/ARCHITECTURE.md`;
   stale shell test scripts reconciled or removed; version set to `0.2.0`;
   PR description finalized with what is and is not verified. No merge, no
   publish.
+
+## Status at end of round (2026-10-02)
+
+All 15 loops ran; every item is ticked. The branch is one draft PR (#2),
+not merged, not published.
+
+**Verdict:** the code is complete for what the round set out to do and is
+consistently green offline — but it is **not release-ready until someone
+runs it against a real cluster.** Every analyzer is covered by fixtures; no
+line of the API-facing code has executed against an API server.
+
+**Shipped**
+
+| Loop | Result |
+|------|--------|
+| L0 | Snapshot → analysis → report architecture; CNI detection v2; JSON output; offline analysis |
+| L1 | NetworkPolicy reachability engine |
+| L2 | `can-reach`; `POL-001..004` |
+| L3 | Service checks `SVC-001..005` |
+| L4 | DNS checks `DNS-001..008`, Corefile parser |
+| L5 | Service proxy detection, `PROXY-001..004` |
+| L6 | Pod / IPAM checks `POD-001..005`; real IPv6 parsing |
+| L7 | `--fail-on`, SARIF, JUnit, rule filters, rule catalog |
+| L8 | Ingress `ING-001..004`, Gateway API `GW-001..005` |
+| L9 | AdminNetworkPolicy tiers; CNI-native policy awareness `POL-005` |
+| L10 | `can-reach --probe` |
+| L11 | `can-reach --suggest`, `explain` |
+| L12 | MCP server |
+| L13 | kube 4.2 and friends; MSRV 1.89; in-cluster config; `cargo audit` clean |
+| L14 | `diff`, `--watch`, Prometheus output |
+| L15 | README, CHANGELOG, ARCHITECTURE, `scripts/live-smoke.sh`, version 0.2.0 |
+
+Tests: 14 on `main` → 121. Rules: 43.
+
+**Skipped or cut, with reasons**
+
+- `hostPort` collision check (L6): the scheduler already prevents them.
+- TLS secret reference check (L8): would require reading Secrets.
+- MCP `snapshot` tool (L12): too large and too revealing for an agent.
+- A separate probe pod (L10): replaced by an ephemeral container, since a
+  label-copying pod would be adopted by the source's ReplicaSet.
+- RBAC pre-check for `--probe` (L10): a 403 is translated instead.
+- reqwest 0.13 (L13): stayed on 0.12.
+- CI: not re-added, per the owner's earlier decision.
+
+**Untested against a live cluster — everything that touches the API**
+
+- `ClusterSnapshot::collect`, including every dynamic-client list (Gateway
+  API, admin policies, Cilium, Calico) and the 404-means-not-installed path.
+- `diagnose`, `snapshot`, `can-reach` and `mcp` without `--from-snapshot`.
+- `can-reach --probe`: patching the pod, polling, reading logs.
+- `diagnose --watch` in live mode.
+- The kube 0.87 → 4.2 upgrade, beyond compiling and passing fixtures.
+
+Also unverified: SARIF against the official schema, the Prometheus output
+against a real scraper, the MCP server against a real client, the musl
+cross-build after the dependency upgrade, and AdminNetworkPolicy semantics
+against a conformance suite.
+
+**Known detection gaps**
+
+- Calico eBPF and Antrea `proxyAll` are not recognised as kube-proxy
+  replacements; distributions other than k3s that embed kube-proxy get a
+  false `PROXY-002`.
+- CNI-native policies are flagged by namespace, not by their own selector,
+  so they over-report.
+- `POD-001` infers sandbox failure from status and age; it does not read
+  Events.
+- Only HTTPRoute is analysed among Gateway API route types.
+
+**First steps on a real cluster**
+
+1. `cargo build --release && scripts/live-smoke.sh` on a throwaway cluster
+   (kind or k3s); read the output for collection errors and false findings.
+2. `kubectl apply -f test-resources.yaml`, then `can-reach` between two of
+   those pods, then the same with `--probe`.
+3. Repeat on one cluster per CNI you care about; PROXY and POD rules are the
+   most CNI-sensitive.
 
 ## Status log
 
@@ -211,3 +289,7 @@ Standing constraints:
   120 tests. `--watch` against a live cluster re-collects everything each
   round and was only exercised against a snapshot file; the Prometheus
   output was checked for shape, not scraped by a real Prometheus.
+- 2026-10-02 — L15 landed: README rewritten with outputs captured from
+  fixtures (a test keeps them in sync), `CHANGELOG.md`,
+  `docs/ARCHITECTURE.md`, stale shell scripts replaced by
+  `scripts/live-smoke.sh`, version `0.2.0`. 121 tests. Round complete.

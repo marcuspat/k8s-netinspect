@@ -766,3 +766,31 @@ fn prometheus_output_is_well_formed_and_zero_filled() {
         3
     );
 }
+
+/// Every `<!-- output: ARGS -->` block in the README is the real output of
+/// that command, so the examples cannot drift from the binary.
+#[test]
+fn readme_examples_match_the_binary() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
+    let mut checked = 0;
+    let mut rest = readme.as_str();
+    while let Some(start) = rest.find("<!-- output: ") {
+        rest = &rest[start + "<!-- output: ".len()..];
+        let (args, after) = rest
+            .split_once(" -->\n```text\n")
+            .expect("marker then text block");
+        let (expected, tail) = after.split_once("```").expect("closing fence");
+        let out = Command::new(env!("CARGO_BIN_EXE_k8s-netinspect"))
+            .args(args.split_whitespace())
+            .current_dir(&root)
+            .env("NO_COLOR", "1")
+            .env("KUBECONFIG", "/nonexistent/kubeconfig")
+            .output()
+            .unwrap();
+        assert_eq!(stdout(&out), expected, "README example out of date: {args}");
+        checked += 1;
+        rest = tail;
+    }
+    assert_eq!(checked, 4, "expected four captured examples in the README");
+}
