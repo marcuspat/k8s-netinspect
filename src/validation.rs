@@ -100,15 +100,9 @@ impl Validator {
             ));
         }
 
-        // Basic IP validation (IPv4 and IPv6)
-        let ipv4_re = Regex::new(r"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$")
-            .map_err(|e| NetInspectError::Runtime(format!("IPv4 regex compilation failed: {}", e)))?;
-
-        let ipv6_re = Regex::new(r"^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$").map_err(|e| {
-            NetInspectError::Runtime(format!("IPv6 regex compilation failed: {}", e))
-        })?;
-
-        if !ipv4_re.is_match(ip) && !ipv6_re.is_match(ip) {
+        // std's parser handles every IPv4 and IPv6 text form, including
+        // compressed IPv6 (fd00::1) that the old hand-written regex rejected.
+        if ip.parse::<std::net::IpAddr>().is_err() {
             return Err(NetInspectError::InvalidInput(format!(
                 "Invalid IP address format: {}",
                 ip
@@ -660,8 +654,13 @@ mod tests {
         // Valid IPs
         assert!(Validator::validate_pod_ip("192.168.1.1").is_ok());
         assert!(Validator::validate_pod_ip("10.0.0.1").is_ok());
+        assert!(Validator::validate_pod_ip("fd00:10:244::1a").is_ok());
+        assert!(Validator::validate_pod_ip("::1").is_ok());
+        assert!(Validator::validate_pod_ip("2001:db8:0:0:0:0:0:1").is_ok());
 
         // Invalid IPs
+        assert!(Validator::validate_pod_ip("fd00::1::2").is_err());
+        assert!(Validator::validate_pod_ip("fd00::g").is_err());
         assert!(Validator::validate_pod_ip("").is_err());
         assert!(Validator::validate_pod_ip("256.1.1.1").is_err());
         assert!(Validator::validate_pod_ip("not.an.ip.address").is_err());

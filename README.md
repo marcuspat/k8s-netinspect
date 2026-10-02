@@ -18,6 +18,7 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 - Service findings: selector matches no pods, no ready endpoints, `targetPort` the backing pods do not expose, LoadBalancer without an address, selector-less Service without endpoints
 - DNS findings: CoreDNS down, degraded or scaled to zero; kube-dns Service missing or without ready endpoints; Corefile with no `kubernetes` plugin, no upstream, or a `forward` that points back at CoreDNS; NodeLocal DNSCache agents not ready
 - Service proxy: identifies kube-proxy (mode and version) or the CNI replacing it; flags kube-proxy not ready on every node, no Service proxy at all, kube-proxy left running next to a full replacement, and version skew against the API server and kubelets
+- Pod networking and IPAM: pods stuck without a network sandbox (grouped by node), duplicate pod IPs, overlapping node pod CIDRs, and — for CNIs that allocate from the node range — pod IPs outside it and ranges about to run out; IPv6 and dual-stack aware
 - `--output json` for scripts and CI
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy

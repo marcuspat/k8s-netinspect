@@ -4,6 +4,7 @@
 pub mod cni;
 pub mod dns;
 pub mod node;
+pub mod pod;
 pub mod policy;
 pub mod policy_rules;
 pub mod proxy;
@@ -21,6 +22,7 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Report {
     findings.extend(collection_findings(snapshot));
     findings.extend(cni::analyze(snapshot, &plugins));
     findings.extend(node::analyze(snapshot));
+    findings.extend(pod::analyze(snapshot, &plugins));
     findings.extend(policy_rules::analyze(snapshot));
     findings.extend(service::analyze(snapshot));
     findings.extend(dns::analyze(snapshot));

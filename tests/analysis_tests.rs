@@ -879,3 +879,133 @@ fn proxy_edge_cases() {
     });
     assert!(proxy_findings(&r).is_empty());
 }
+
+// ---- Pod networking and IPAM (fixture: ipam-broken) ----
+
+fn pod_findings(r: &Report) -> Vec<(&str, &str)> {
+    r.findings
+        .iter()
+        .filter(|f| f.category == "pod")
+        .map(|f| (f.id.as_str(), f.resource.as_deref().unwrap()))
+        .collect()
+}
+
+#[test]
+fn ipam_findings_on_broken_fixture() {
+    let r = report("ipam-broken");
+    assert_eq!(r.cni_label(), "Flannel v0.25.6");
+    assert_eq!(
+        pod_findings(&r),
+        vec![
+            ("POD-001", "node/node-a"),
+            ("POD-002", "pod/apps/web-1"),
+            ("POD-004", "node/node-a"),
+            ("POD-003", "pod/apps/legacy-1"),
+            ("POD-005", "node/node-b"),
+        ]
+    );
+    let find = |id: &str| r.findings.iter().find(|f| f.id == id).unwrap();
+
+    // Only the two long-stuck pods: not the 20-second-old one, not the one
+    // that has an IP (image pull), not the unscheduled one.
+    let stuck = find("POD-001");
+    assert!(
+        stuck.detail.starts_with("2 pod(s) on node 'node-a'"),
+        "{}",
+        stuck.detail
+    );
+    assert!(stuck.detail.contains("apps/stuck-1, apps/stuck-2"));
+    assert!(stuck
+        .remediation
+        .as_deref()
+        .unwrap()
+        .contains("-n apps stuck-1"));
+
+    // hostNetwork pods legitimately share the node IP.
+    let dup = find("POD-002");
+    assert!(dup
+        .detail
+        .contains("10.244.0.5 is held by apps/web-1, apps/web-2"));
+    assert_eq!(r.findings.iter().filter(|f| f.id == "POD-002").count(), 1);
+
+    assert!(find("POD-003")
+        .detail
+        .contains("10.88.0.4 is not in the podCIDR of node 'node-a'"));
+    assert!(
+        find("POD-004").detail.contains("10.244.0.0/24")
+            && find("POD-004").detail.contains("10.244.0.128/25")
+    );
+    // /28 = 13 usable; 12 running pods (the Succeeded one has released its IP).
+    assert!(
+        find("POD-005").detail.contains("uses 12 of about 13"),
+        "{}",
+        find("POD-005").detail
+    );
+}
+
+#[test]
+fn ipam_rules_depend_on_the_cni_and_on_available_data() {
+    // Calico runs its own IPAM: node podCIDR checks do not apply.
+    let r = mutate("ipam-broken", |s| {
+        s.daemon_sets[0].metadata.name = Some("calico-node".into());
+        s.daemon_sets[0]
+            .spec
+            .as_mut()
+            .unwrap()
+            .template
+            .spec
+            .as_mut()
+            .unwrap()
+            .containers[0]
+            .image = Some("docker.io/calico/node:v3.28.0".into());
+    });
+    let ids: Vec<&str> = pod_findings(&r).iter().map(|(id, _)| *id).collect();
+    assert_eq!(ids, vec!["POD-001", "POD-002", "POD-004"]);
+
+    // No collection timestamp: "stuck" cannot be told from "just created".
+    let r = mutate("ipam-broken", |s| s.collected_at = None);
+    assert!(!pod_findings(&r).iter().any(|(id, _)| *id == "POD-001"));
+
+    // Namespace-scoped snapshot undercounts per-node usage: no exhaustion claim.
+    let r = mutate("ipam-broken", |s| s.namespace = Some("apps".into()));
+    assert!(!pod_findings(&r).iter().any(|(id, _)| *id == "POD-005"));
+
+    // Pods forbidden: only the node-level overlap check remains.
+    let r = mutate("ipam-broken", |s| {
+        s.pods.clear();
+        s.collection_errors
+            .push(k8s_netinspect::snapshot::CollectionError {
+                resource: "pods".into(),
+                message: "forbidden".into(),
+            });
+    });
+    assert_eq!(pod_findings(&r), vec![("POD-004", "node/node-a")]);
+}
+
+#[test]
+fn dual_stack_pod_ips_are_checked_per_family() {
+    let r = mutate("ipam-broken", |s| {
+        let node = s.nodes[0].spec.as_mut().unwrap();
+        node.pod_cidrs = Some(vec!["10.244.0.0/24".into(), "fd00:10:244::/64".into()]);
+        for p in &mut s.pods {
+            if p.metadata.name.as_deref() == Some("legacy-1") {
+                let st = p.status.as_mut().unwrap();
+                st.pod_ip = Some("10.244.0.77".into());
+                st.pod_ips = Some(
+                    serde_json::from_value(serde_json::json!([
+                        {"ip": "10.244.0.77"}, {"ip": "fd00:10:244:1::7"}
+                    ]))
+                    .unwrap(),
+                );
+            }
+        }
+    });
+    let bad: Vec<&str> = r
+        .findings
+        .iter()
+        .filter(|f| f.id == "POD-003")
+        .map(|f| f.detail.as_str())
+        .collect();
+    assert_eq!(bad.len(), 1, "{bad:?}");
+    assert!(bad[0].starts_with("fd00:10:244:1::7 is not in the podCIDR"));
+}

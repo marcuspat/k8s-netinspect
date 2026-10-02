@@ -401,7 +401,7 @@ async fn test_connectivity_with_retries(pod_ip: &str, max_retries: u32) -> NetIn
 }
 
 async fn test_connectivity(pod_ip: &str) -> NetInspectResult<()> {
-    let url = format!("http://{}:80", pod_ip);
+    let url = pod_url(pod_ip);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -425,7 +425,27 @@ async fn test_connectivity(pod_ip: &str) -> NetInspectResult<()> {
     }
 }
 
+/// `http://<ip>:80`, with the brackets an IPv6 literal needs in a URL.
+fn pod_url(pod_ip: &str) -> String {
+    if pod_ip.contains(':') {
+        format!("http://[{pod_ip}]:80")
+    } else {
+        format!("http://{pod_ip}:80")
+    }
+}
+
 /// Create Kubernetes client with enhanced error handling
 async fn create_kubernetes_client() -> NetInspectResult<Client> {
     Client::try_default().await.map_err(NetInspectError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pod_url_brackets_ipv6() {
+        assert_eq!(pod_url("10.0.1.4"), "http://10.0.1.4:80");
+        assert_eq!(pod_url("fd00:10:244::1a"), "http://[fd00:10:244::1a]:80");
+    }
 }

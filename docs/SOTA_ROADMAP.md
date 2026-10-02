@@ -68,7 +68,7 @@ Standing constraints:
   ConfigMap (iptables / ipvs / nftables); kube-proxy DaemonSet health;
   kube-proxy absent without a replacement (Cilium KPR, kube-router,
   Dataplane V2); kube-proxy/kubelet version skew beyond the supported window.
-- [ ] **L6 — Pod networking and IPAM.** Pods stuck in ContainerCreating with a
+- [x] **L6 — Pod networking and IPAM.** Pods stuck in ContainerCreating with a
   network sandbox reason; duplicate pod IPs; pod IP outside its node's
   `podCIDR`; overlapping node `podCIDR`s; per-node IP exhaustion; `hostPort`
   collisions. Replace the regex IP validation with `std::net::IpAddr` so
@@ -137,3 +137,9 @@ Standing constraints:
   `cilium-config` ConfigMap. 64 tests. Known gaps: Calico eBPF and Antrea
   `proxyAll` are not recognised as kube-proxy replacements; distributions
   other than k3s that embed kube-proxy would get a `PROXY-002` warning.
+- 2026-10-02 — L6 landed: rules `POD-001..005`; IP validation uses
+  `std::net::IpAddr` (compressed IPv6 was rejected before) and `test-pod`
+  brackets IPv6 literals in its URL. 69 tests. Dropped from the item:
+  `hostPort` collisions — the scheduler already refuses to co-locate
+  conflicting hostPorts, so the rule could never fire. POD-001 infers a
+  sandbox failure from pod status and age; it does not read Events.
