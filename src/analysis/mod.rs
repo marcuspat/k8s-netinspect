@@ -3,6 +3,7 @@
 
 pub mod cni;
 pub mod dns;
+pub mod ingress;
 pub mod node;
 pub mod pod;
 pub mod policy;
@@ -26,6 +27,7 @@ pub fn analyze(snapshot: &ClusterSnapshot) -> Report {
     findings.extend(policy_rules::analyze(snapshot));
     findings.extend(service::analyze(snapshot));
     findings.extend(dns::analyze(snapshot));
+    findings.extend(ingress::analyze(snapshot));
     let service_proxy = proxy::detect(snapshot, &plugins);
     findings.extend(proxy::analyze(snapshot, &plugins, service_proxy.as_ref()));
 

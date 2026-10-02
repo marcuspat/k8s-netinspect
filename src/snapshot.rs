@@ -8,9 +8,10 @@
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment};
 use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Node, Pod, Service};
 use k8s_openapi::api::discovery::v1::EndpointSlice;
-use k8s_openapi::api::networking::v1::NetworkPolicy;
+use k8s_openapi::api::networking::v1::{Ingress, IngressClass, NetworkPolicy};
 use k8s_openapi::{Metadata, NamespaceResourceScope};
 use kube::api::{ListParams, ObjectMeta};
+use kube::core::{ApiResource, DynamicObject, GroupVersionKind};
 use kube::{Api, Client, Resource};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,8 @@ const NETWORK_CONFIG_MAPS: &[&str] = &[
     "cilium-config",
 ];
 
+pub const GATEWAY_GROUP: &str = "gateway.networking.k8s.io";
+
 const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
 const REDACTED: &str = "<redacted>";
 
@@ -59,6 +62,14 @@ pub struct ClusterSnapshot {
     pub services: Vec<Service>,
     pub endpoint_slices: Vec<EndpointSlice>,
     pub network_policies: Vec<NetworkPolicy>,
+    pub ingresses: Vec<Ingress>,
+    /// Cluster-scoped.
+    pub ingress_classes: Vec<IngressClass>,
+    /// Gateway API objects, kept untyped because the CRDs are optional and
+    /// versioned independently of Kubernetes. Empty when not installed.
+    pub gateways: Vec<DynamicObject>,
+    pub http_routes: Vec<DynamicObject>,
+    pub reference_grants: Vec<DynamicObject>,
     /// Always cluster-wide (falls back to `kube-system`): CNI agents live here.
     pub daemon_sets: Vec<DaemonSet>,
     /// `kube-system` only: CoreDNS and friends.
@@ -129,6 +140,41 @@ impl ClusterSnapshot {
         snap.endpoint_slices = take(slices, &mut errors);
         snap.network_policies = take(policies, &mut errors);
         snap.deployments = take(deployments, &mut errors);
+
+        let (ingresses, ingress_classes, gateways, http_routes, reference_grants) = tokio::join!(
+            list(scoped::<Ingress>(client, namespace), "ingresses"),
+            list(Api::<IngressClass>::all(client.clone()), "ingressclasses"),
+            list_dynamic(
+                client,
+                namespace,
+                GATEWAY_GROUP,
+                "v1",
+                "Gateway",
+                "gateways"
+            ),
+            list_dynamic(
+                client,
+                namespace,
+                GATEWAY_GROUP,
+                "v1",
+                "HTTPRoute",
+                "httproutes"
+            ),
+            // Grants live in the *target* namespace, so always list cluster-wide.
+            list_dynamic(
+                client,
+                None,
+                GATEWAY_GROUP,
+                "v1beta1",
+                "ReferenceGrant",
+                "referencegrants"
+            ),
+        );
+        snap.ingresses = take(ingresses, &mut errors);
+        snap.ingress_classes = take(ingress_classes, &mut errors);
+        snap.gateways = take(gateways, &mut errors);
+        snap.http_routes = take(http_routes, &mut errors);
+        snap.reference_grants = take(reference_grants, &mut errors);
 
         // Cluster-wide DaemonSet list may be forbidden; kube-system is enough
         // for the mainstream CNIs.
@@ -247,6 +293,20 @@ impl ClusterSnapshot {
         for c in &mut self.config_maps {
             scrub_meta(&mut c.metadata);
         }
+        for i in &mut self.ingresses {
+            scrub_meta(&mut i.metadata);
+        }
+        for c in &mut self.ingress_classes {
+            scrub_meta(&mut c.metadata);
+        }
+        for o in self
+            .gateways
+            .iter_mut()
+            .chain(&mut self.http_routes)
+            .chain(&mut self.reference_grants)
+        {
+            scrub_meta(&mut o.metadata);
+        }
     }
 }
 
@@ -323,5 +383,36 @@ fn take<K>(
             });
             Vec::new()
         }
+    }
+}
+
+/// List a CRD-backed resource. A 404 means the CRD is not installed, which
+/// is an ordinary state (empty list), not a collection error.
+async fn list_dynamic(
+    client: &Client,
+    namespace: Option<&str>,
+    group: &str,
+    version: &str,
+    kind: &str,
+    plural: &'static str,
+) -> Result<Vec<DynamicObject>, (&'static str, NetInspectError)> {
+    let resource =
+        ApiResource::from_gvk_with_plural(&GroupVersionKind::gvk(group, version, kind), plural);
+    let api: Api<DynamicObject> = match namespace {
+        Some(ns) => Api::namespaced_with(client.clone(), ns, &resource),
+        None => Api::all_with(client.clone(), &resource),
+    };
+    match tokio::time::timeout(LIST_TIMEOUT, api.list(&ListParams::default())).await {
+        Ok(Ok(l)) => Ok(l.items),
+        Ok(Err(kube::Error::Api(e))) if e.code == 404 => Ok(Vec::new()),
+        Ok(Err(e)) => Err((plural, NetInspectError::from(e))),
+        Err(_) => Err((
+            plural,
+            NetInspectError::Timeout(format!(
+                "Listing {} timed out after {} seconds",
+                plural,
+                LIST_TIMEOUT.as_secs()
+            )),
+        )),
     }
 }

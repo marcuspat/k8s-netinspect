@@ -1009,3 +1009,148 @@ fn dual_stack_pod_ips_are_checked_per_family() {
     assert_eq!(bad.len(), 1, "{bad:?}");
     assert!(bad[0].starts_with("fd00:10:244:1::7 is not in the podCIDR"));
 }
+
+// ---- Ingress and Gateway API (fixture: ingress-broken) ----
+
+fn north_south(r: &Report) -> Vec<(&str, &str)> {
+    r.findings
+        .iter()
+        .filter(|f| f.category == "ingress" || f.category == "gateway")
+        .map(|f| (f.id.as_str(), f.resource.as_deref().unwrap()))
+        .collect()
+}
+
+#[test]
+fn ingress_and_gateway_findings_on_broken_fixture() {
+    let r = report("ingress-broken");
+    assert_eq!(
+        north_south(&r),
+        vec![
+            ("GW-001", "httproute/shop/orphan"),
+            ("GW-002", "httproute/shop/bad-backend"),
+            ("GW-002", "httproute/shop/bad-backend"),
+            ("GW-003", "httproute/shop/cross-ns"),
+            ("ING-001", "ingress/shop/missing-svc"),
+            ("ING-002", "ingress/shop/bad-port"),
+            ("ING-002", "ingress/shop/bad-port"),
+            ("GW-004", "gateway/infra/internal"),
+            ("GW-005", "httproute/shop/rejected"),
+            ("ING-003", "ingress/shop/no-class"),
+            ("ING-003", "ingress/shop/typo-class"),
+            ("ING-004", "ingress/shop/no-class"),
+            ("ING-004", "ingress/shop/typo-class"),
+        ]
+    );
+    let details = |id: &str| -> Vec<&str> {
+        r.findings
+            .iter()
+            .filter(|f| f.id == id)
+            .map(|f| f.detail.as_str())
+            .collect()
+    };
+    assert!(details("ING-001")[0].starts_with("shop.example.com/cart routes to Service 'cart'"));
+    assert!(details("ING-002")[0].contains("Service 'api' port 80, but that Service exposes: 8080"));
+    assert!(details("ING-002")[1].contains("Service 'web' port 'https'"));
+    assert!(details("ING-003")[0].contains("no default IngressClass"));
+    assert!(details("ING-003")[1].contains("'ngnix' does not match any IngressClass"));
+    assert!(details("GW-001")[0].contains("Gateway 'infra/edge'"));
+    assert!(details("GW-002")[0].contains("'shop/cart', which does not exist"));
+    assert!(details("GW-002")[1].contains("port 9999"));
+    // payments/ledger has no grant; billing/invoices does.
+    assert!(details("GW-003")[0].contains("'payments/ledger'"));
+    assert_eq!(details("GW-003").len(), 1);
+    assert!(details("GW-004")[0].starts_with("Programmed is not True (AddressNotAssigned)"));
+    assert!(details("GW-005")[0].contains("Accepted=False (NotAllowedByListeners)"));
+}
+
+#[test]
+fn ingress_rules_respect_defaults_scope_and_missing_data() {
+    // A default IngressClass makes a class-less Ingress valid.
+    let r = mutate("ingress-broken", |s| {
+        s.ingress_classes[0]
+            .metadata
+            .annotations
+            .get_or_insert_with(Default::default)
+            .insert(
+                "ingressclass.kubernetes.io/is-default-class".into(),
+                "true".into(),
+            );
+    });
+    let class: Vec<&str> = r
+        .findings
+        .iter()
+        .filter(|f| f.id == "ING-003")
+        .map(|f| f.resource.as_deref().unwrap())
+        .collect();
+    assert_eq!(class, vec!["ingress/shop/typo-class"]);
+
+    // A ReferenceGrant restricted to another Service name does not help.
+    let r = mutate("ingress-broken", |s| {
+        s.reference_grants[0].data["spec"]["to"][0]["name"] = "other".into();
+    });
+    assert_eq!(r.findings.iter().filter(|f| f.id == "GW-003").count(), 2);
+
+    // Forbidden lists: no claims built on them.
+    let forbid = |s: &mut ClusterSnapshot, resource: &str| {
+        s.collection_errors
+            .push(k8s_netinspect::snapshot::CollectionError {
+                resource: resource.into(),
+                message: "forbidden".into(),
+            })
+    };
+    let r = mutate("ingress-broken", |s| {
+        s.services.clear();
+        s.ingress_classes.clear();
+        s.gateways.clear();
+        s.reference_grants.clear();
+        for res in ["services", "ingressclasses", "gateways", "referencegrants"] {
+            forbid(s, res);
+        }
+    });
+    let ids: Vec<&str> = north_south(&r).iter().map(|(id, _)| *id).collect();
+    assert_eq!(
+        ids,
+        vec!["GW-005", "ING-004", "ING-004"],
+        "only status-based findings remain"
+    );
+
+    // Namespace-scoped snapshot: objects in other namespaces are out of view.
+    let r = mutate("ingress-broken", |s| {
+        s.namespace = Some("shop".into());
+        s.services
+            .retain(|x| x.metadata.namespace.as_deref() == Some("shop"));
+        s.pods
+            .retain(|x| x.metadata.namespace.as_deref() == Some("shop"));
+        s.endpoint_slices.clear();
+        s.gateways.clear();
+    });
+    let ids: Vec<&str> = north_south(&r).iter().map(|(id, _)| *id).collect();
+    assert!(
+        !ids.contains(&"GW-001"),
+        "Gateways live in infra, outside the scope"
+    );
+    assert_eq!(
+        ids.iter().filter(|i| **i == "GW-002").count(),
+        2,
+        "shop-local backends still checked"
+    );
+}
+
+#[test]
+fn snapshot_without_ingress_fields_still_loads() {
+    // Snapshots written before these fields existed must stay readable.
+    let snap = ClusterSnapshot::from_json(r#"{"schema_version": 1, "nodes": []}"#).unwrap();
+    assert!(snap.ingresses.is_empty() && snap.http_routes.is_empty());
+    let round = ClusterSnapshot::from_json(
+        &ClusterSnapshot::load(&fixture_path("ingress-broken"))
+            .unwrap()
+            .to_json()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(round.http_routes.len(), 5);
+    assert_eq!(
+        round.gateways[1].data["status"]["conditions"][1]["reason"],
+        "AddressNotAssigned"
+    );
+}

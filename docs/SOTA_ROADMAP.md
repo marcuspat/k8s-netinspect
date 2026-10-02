@@ -76,7 +76,7 @@ Standing constraints:
 - [x] **L7 — CI-grade output.** `--fail-on <severity>` exit status; SARIF
   2.1.0 and JUnit XML formats; `--only` / `--skip` rule filters; a `rules`
   command and generated `docs/RULES.md` catalog (id, severity, meaning, fix).
-- [ ] **L8 — Ingress and Gateway API.** Ingress backends pointing at missing
+- [x] **L8 — Ingress and Gateway API.** Ingress backends pointing at missing
   Services or ports, missing/unknown IngressClass, TLS secret references;
   Gateway API via the dynamic client: HTTPRoute `parentRefs`/`backendRefs`
   that do not resolve, cross-namespace refs without a ReferenceGrant,
@@ -150,3 +150,11 @@ Standing constraints:
   locations only (cluster objects, not files), so GitHub code scanning may
   not display them inline; SARIF was not validated against the official
   JSON schema here.
+- 2026-10-02 — L8 landed: snapshot collects Ingress, IngressClass and (via
+  the dynamic client, 404 = not installed) Gateway / HTTPRoute /
+  ReferenceGrant; rules `ING-001..004`, `GW-001..005` (42 rules total).
+  83 tests. Dropped from the item: TLS secret references — checking them
+  means listing Secrets, which this tool deliberately does not read. Only
+  HTTPRoute is analysed (no GRPCRoute / TLSRoute), and Gateway listener
+  `allowedRoutes` is not evaluated — GW-005 relays the controller's own
+  verdict instead.

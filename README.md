@@ -19,6 +19,7 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 - DNS findings: CoreDNS down, degraded or scaled to zero; kube-dns Service missing or without ready endpoints; Corefile with no `kubernetes` plugin, no upstream, or a `forward` that points back at CoreDNS; NodeLocal DNSCache agents not ready
 - Service proxy: identifies kube-proxy (mode and version) or the CNI replacing it; flags kube-proxy not ready on every node, no Service proxy at all, kube-proxy left running next to a full replacement, and version skew against the API server and kubelets
 - Pod networking and IPAM: pods stuck without a network sandbox (grouped by node), duplicate pod IPs, overlapping node pod CIDRs, and — for CNIs that allocate from the node range — pod IPs outside it and ranges about to run out; IPv6 and dual-stack aware
+- Ingress and Gateway API: backends pointing at missing Services or ports, Ingresses no controller will claim, HTTPRoutes with a missing parent Gateway or an unresolved / un-granted cross-namespace backend, Gateways not programmed, routes the controller rejected
 - CI-friendly: `--output json|sarif|junit`, `--fail-on <severity>`, `--only` / `--skip` rule filters, and a rule catalog ([docs/RULES.md](docs/RULES.md))
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
@@ -241,7 +242,7 @@ cargo build --release
 
 - **Rust**: 1.70+ (for building from source)
 - **Kubernetes cluster access** via kubeconfig  
-- **RBAC permissions**: `get/list` on pods, nodes, namespaces. Optional, for fuller diagnosis: `list` on services, endpointslices, networkpolicies, daemonsets, and `get` on the `coredns` / `kube-proxy` ConfigMaps in `kube-system`
+- **RBAC permissions**: `get/list` on pods, nodes, namespaces. Optional, for fuller diagnosis: `list` on services, endpointslices, networkpolicies, ingresses, ingressclasses, daemonsets, the Gateway API `gateways` / `httproutes` / `referencegrants`, and `get` on the `coredns` / `kube-proxy` ConfigMaps in `kube-system`
 - **Network connectivity** to Kubernetes API server
 
 ## Configuration

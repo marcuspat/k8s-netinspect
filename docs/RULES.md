@@ -35,6 +35,15 @@ Severity is the highest a rule can report; the description notes when it reports
 | `DNS-006` | error | CoreDNS forwards to itself | A forward target is a loopback address or the DNS Service's own ClusterIP. |
 | `DNS-007` | warning | Corefile has no upstream resolver | No forward plugin: names outside the cluster domain do not resolve. |
 | `DNS-008` | error | NodeLocal DNSCache is not ready on every node | The node-local-dns DaemonSet has fewer ready pods than desired. |
+| `ING-001` | error | Ingress backend Service does not exist | An Ingress rule or default backend names a Service that is not in the Ingress's namespace. |
+| `ING-002` | error | Ingress backend port is not a port of the Service | The backend's port number or name is not defined on the Service. |
+| `ING-003` | warning | Ingress has no usable IngressClass | The Ingress names an IngressClass that does not exist, or names none while the cluster has no default class. |
+| `ING-004` | info | Ingress has no address | status.loadBalancer.ingress is empty: no controller has published an address for it. Some controllers never do. |
+| `GW-001` | error | HTTPRoute parent Gateway does not exist | A parentRef names a Gateway that is not in the snapshot. |
+| `GW-002` | error | HTTPRoute backend does not resolve | A backendRef names a Service that does not exist, or a port the Service does not define. |
+| `GW-003` | error | Cross-namespace backendRef lacks a ReferenceGrant | The backend Service is in another namespace and no ReferenceGrant there permits HTTPRoutes from the route's namespace. |
+| `GW-004` | warning | Gateway is not programmed | The Gateway's Accepted or Programmed condition is not True. |
+| `GW-005` | warning | HTTPRoute was not accepted by its parent | The controller reports Accepted=False or ResolvedRefs=False for the route. |
 | `PROXY-001` | critical | kube-proxy is not ready on every node | Critical when no kube-proxy pod is ready, Error otherwise. |
 | `PROXY-002` | warning | No Service proxy detected | No kube-proxy and no CNI known to replace it. |
 | `PROXY-003` | warning | kube-proxy runs alongside a kube-proxy replacement | Both kube-proxy and a full replacement program Service handling. |
