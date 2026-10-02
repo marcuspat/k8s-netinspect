@@ -87,7 +87,7 @@ Standing constraints:
   Evaluate ANP/BANP tiers in the engine; for CNI-native policies that select
   an endpoint, mark the `can-reach` verdict *incomplete* instead of claiming
   certainty.
-- [ ] **L10 — In-cluster probe.** `test-pod` currently issues an HTTP GET to
+- [x] **L10 — In-cluster probe.** `test-pod` currently issues an HTTP GET to
   the pod IP from wherever the CLI runs, which is the wrong vantage point.
   Add an opt-in `--probe` that runs a TCP connect from inside the cluster
   (short-lived probe pod on a chosen node/namespace, explicit image, always
@@ -167,3 +167,14 @@ Standing constraints:
   the policy's own selector, so it over-reports rather than under-reports;
   ANP semantics follow the v1alpha1 spec as I understand it and were not
   checked against a conformance suite.
+- 2026-10-02 — L10 landed: `can-reach --probe` (exit 8 on mismatch),
+  `src/probe.rs`. 96 tests. **Untested against a live cluster**: only the
+  container spec, classification, comparison and argument handling are
+  tested. Deviations from the item: the probe is an ephemeral container in
+  the source pod rather than a separate probe pod — a separate pod would
+  not be selected by the source's policies unless it copied the source's
+  labels, and a label-copying pod gets adopted by the source's ReplicaSet
+  and receives its Service traffic. It hangs off `can-reach` (where there
+  is a prediction to compare with), not `test-pod`, which now prints a note
+  about its vantage point. No RBAC pre-check: a 403 on the patch is mapped
+  to a message naming the missing permission.

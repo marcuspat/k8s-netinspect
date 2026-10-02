@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use std::process;
 
 use k8s_netinspect::analysis::policy::Protocol;
-use k8s_netinspect::commands::{self, Source};
+use k8s_netinspect::commands::{self, ProbeOptions, Source};
 use k8s_netinspect::errors::NetInspectResult;
 use k8s_netinspect::model::Severity;
 use k8s_netinspect::output::OutputFormat;
+use k8s_netinspect::probe;
 use k8s_netinspect::rules::Filter;
 use k8s_netinspect::validation::Validator;
 
@@ -79,6 +80,20 @@ enum Commands {
         /// Evaluate against a snapshot file instead of a live cluster
         #[arg(long, value_name = "FILE")]
         from_snapshot: Option<PathBuf>,
+        /// Also test for real: run one TCP connect from inside the source pod
+        ///
+        /// Adds an ephemeral container to the source pod (it cannot be removed
+        /// afterwards) and needs `patch` on pods/ephemeralcontainers. Exits 8
+        /// when the result contradicts the policy verdict.
+        #[arg(long)]
+        probe: bool,
+        /// Image for the probe container; must provide `nc`
+        #[arg(long, value_name = "IMAGE", default_value = probe::DEFAULT_IMAGE, requires = "probe")]
+        probe_image: String,
+        /// TCP connect timeout for the probe, in seconds
+        #[arg(long, value_name = "SECONDS", default_value_t = 5, requires = "probe",
+              value_parser = clap::value_parser!(u32).range(1..=60))]
+        probe_timeout: u32,
     },
     /// Test pod connectivity
     TestPod {
@@ -119,6 +134,10 @@ impl From<ProtocolArg> for Protocol {
 /// Exit status of `can-reach` when the flow is blocked. Distinct from every
 /// error exit code so scripts can tell "blocked" from "could not evaluate".
 const EXIT_BLOCKED: i32 = 6;
+
+/// Exit status of `can-reach --probe` when the observed result contradicts
+/// the policy verdict.
+const EXIT_PROBE_MISMATCH: i32 = 8;
 
 /// Exit status of `diagnose --fail-on` when a finding meets the threshold.
 const EXIT_FINDINGS: i32 = 7;
@@ -182,6 +201,9 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
             protocol,
             output,
             from_snapshot,
+            probe,
+            probe_image,
+            probe_timeout,
         } => {
             let source = match from_snapshot {
                 Some(path) => Source::File(path),
@@ -191,8 +213,23 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
                     Source::Live { namespace: None }
                 }
             };
-            let report =
-                commands::can_reach(source, from, to, *port, (*protocol).into(), *output).await?;
+            let options = probe.then(|| ProbeOptions {
+                image: probe_image.clone(),
+                timeout_secs: *probe_timeout,
+            });
+            let report = commands::can_reach(
+                source,
+                from,
+                to,
+                *port,
+                (*protocol).into(),
+                *output,
+                options.as_ref(),
+            )
+            .await?;
+            if report.probe.as_ref().is_some_and(|p| !p.agrees) {
+                process::exit(EXIT_PROBE_MISMATCH);
+            }
             if !report.verdict.allowed {
                 process::exit(EXIT_BLOCKED);
             }

@@ -14,6 +14,7 @@ use crate::analysis::policy::{
 use crate::errors::{NetInspectError, NetInspectResult};
 use crate::model::Report;
 use crate::output::{self, OutputFormat};
+use crate::probe::{self, Observation, ProbeReport, ProbeSpec};
 use crate::rules::Filter;
 use crate::snapshot::ClusterSnapshot;
 use crate::validation::Validator;
@@ -118,6 +119,16 @@ pub struct ReachReport {
     pub protocol: Protocol,
     #[serde(flatten)]
     pub verdict: Verdict,
+    /// Present when `--probe` ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe: Option<ProbeReport>,
+}
+
+/// Options for the opt-in in-cluster probe.
+#[derive(Debug, Clone)]
+pub struct ProbeOptions {
+    pub image: String,
+    pub timeout_secs: u32,
 }
 
 /// Would NetworkPolicy let `from` talk to `to` on `port`? Endpoints are
@@ -129,27 +140,106 @@ pub async fn can_reach(
     port: u16,
     protocol: Protocol,
     format: OutputFormat,
+    probe: Option<&ProbeOptions>,
 ) -> NetInspectResult<ReachReport> {
+    if matches!(format, OutputFormat::Sarif | OutputFormat::Junit) {
+        return Err(NetInspectError::InvalidInput(
+            "can-reach supports --output text or json".to_string(),
+        ));
+    }
+    if probe.is_some() {
+        if matches!(source, Source::File(_)) {
+            return Err(NetInspectError::InvalidInput(
+                "--probe needs a live cluster; it cannot be combined with --from-snapshot"
+                    .to_string(),
+            ));
+        }
+        if protocol != Protocol::Tcp {
+            return Err(NetInspectError::InvalidInput(
+                "--probe only supports TCP: a UDP or SCTP probe cannot tell a dropped packet \
+                 from a silent listener"
+                    .to_string(),
+            ));
+        }
+    }
+
     let snapshot = match source {
         Source::Live { namespace } => collect_snapshot(namespace).await?,
         Source::File(path) => ClusterSnapshot::load(path)?,
     };
-    let report = evaluate_reach(&snapshot, from, to, port, protocol)?;
+    let mut report = evaluate_reach(&snapshot, from, to, port, protocol)?;
+
+    if let Some(options) = probe {
+        let (namespace, pod, target) = probe_endpoints(&snapshot, from, to)?;
+        let spec = ProbeSpec {
+            image: options.image.clone(),
+            target,
+            port,
+            timeout_secs: options.timeout_secs,
+        };
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        let name = probe::container_name(suffix);
+        eprintln!(
+            "{} Adding ephemeral container '{}' ({}) to {}/{}. It runs one TCP connect and \
+             exits, but stays listed in the pod spec until the pod is deleted.",
+            "ℹ".blue().bold(),
+            name,
+            spec.image,
+            namespace,
+            pod
+        );
+        let client = create_kubernetes_client().await?;
+        let (exit_code, logs) = probe::run(client, &namespace, &pod, &name, &spec).await?;
+        report.probe = Some(probe::compare(
+            report.verdict.allowed,
+            probe::classify(exit_code, &logs),
+            &name,
+        ));
+    }
+
     match format {
         OutputFormat::Text => print!("{}", render_reach(&report)),
-        OutputFormat::Json => println!(
+        _ => println!(
             "{}",
             serde_json::to_string_pretty(&report).map_err(|e| NetInspectError::Runtime(
                 format!("Failed to serialize verdict: {e}")
             ))?
         ),
-        OutputFormat::Sarif | OutputFormat::Junit => {
-            return Err(NetInspectError::InvalidInput(
-                "can-reach supports --output text or json".to_string(),
-            ))
-        }
     }
     Ok(report)
+}
+
+/// What the probe needs: the source pod to run in and an address to dial.
+pub fn probe_endpoints(
+    snapshot: &ClusterSnapshot,
+    from: &str,
+    to: &str,
+) -> NetInspectResult<(String, String, IpAddr)> {
+    let Endpoint::Pod(src) = resolve_endpoint(snapshot, from)? else {
+        return Err(NetInspectError::InvalidInput(
+            "--probe runs inside the source, so --from must be a pod, not an external IP"
+                .to_string(),
+        ));
+    };
+    let target = match resolve_endpoint(snapshot, to)? {
+        Endpoint::Ip(ip) => ip,
+        Endpoint::Pod(dst) => policy::pod_ips(dst).into_iter().next().ok_or_else(|| {
+            NetInspectError::ResourceNotFound(format!(
+                "Destination pod '{to}' has no IP address yet"
+            ))
+        })?,
+    };
+    Ok((
+        src.metadata
+            .namespace
+            .clone()
+            .unwrap_or_else(|| "default".to_string()),
+        src.metadata.name.clone().unwrap_or_default(),
+        target,
+    ))
 }
 
 /// Pure part of `can-reach`: resolve the endpoints and evaluate the flow.
@@ -177,6 +267,7 @@ pub fn evaluate_reach(
         port,
         protocol,
         verdict,
+        probe: None,
     })
 }
 
@@ -278,6 +369,23 @@ fn render_reach(report: &ReachReport) -> String {
             "⚠".yellow().bold()
         ));
     }
+    if let Some(p) = &report.probe {
+        let observed = match p.observed {
+            Observation::Connected => "connected",
+            Observation::Refused => "connection refused",
+            Observation::TimedOut => "timed out",
+            Observation::Inconclusive => "inconclusive",
+        };
+        let mark = if p.agrees {
+            "✓".green().bold()
+        } else {
+            "✗".red().bold()
+        };
+        out.push_str(&format!(
+            "{} Probe from inside {}: {} — {}\n",
+            mark, report.from, observed, p.explanation
+        ));
+    }
     out
 }
 
@@ -307,6 +415,14 @@ pub async fn test_pod(pod_name: &str, namespace: &str) -> NetInspectResult<()> {
         "🔍".cyan(),
         namespace.yellow(),
         pod_name.yellow()
+    );
+
+    println!(
+        "{} This HTTP check runs from this machine, not from inside the cluster; for an \
+         in-cluster test use: can-reach --from <pod> --to {}/{} --port 80 --probe",
+        "ℹ".blue().bold(),
+        namespace,
+        pod_name
     );
 
     // Create client with better error handling

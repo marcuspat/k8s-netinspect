@@ -262,3 +262,59 @@ fn can_reach_rejects_report_only_formats() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("supports --output text or json"));
 }
+
+// ---- can-reach --probe: everything that can be checked without a cluster ----
+
+#[test]
+fn probe_is_refused_without_a_live_cluster_or_without_opt_in() {
+    let f = fixture("shop-policies");
+    let base = [
+        "can-reach",
+        "--from",
+        "shop/web",
+        "--to",
+        "shop/api",
+        "-p",
+        "8080",
+    ];
+
+    let out = run(&[&base[..], &["--probe", "--from-snapshot", f.as_str()]].concat());
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--probe needs a live cluster"));
+    assert!(out.stdout.is_empty(), "nothing is evaluated or printed");
+
+    // Probe tuning flags are meaningless without --probe.
+    let out = run(&[
+        &base[..],
+        &["--probe-image", "alpine", "--from-snapshot", f.as_str()],
+    ]
+    .concat());
+    assert_eq!(out.status.code(), Some(2));
+    let out = run(&[&base[..], &["--probe", "--probe-timeout", "0"]].concat());
+    assert_eq!(out.status.code(), Some(2), "timeout must be 1..=60");
+
+    // Without --probe nothing about the probe appears in the output.
+    let out = run(&[&base[..], &["-o", "json", "--from-snapshot", f.as_str()]].concat());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v.get("probe").is_none());
+}
+
+#[test]
+fn probe_endpoints_require_a_pod_source_and_resolve_the_target_address() {
+    use k8s_netinspect::commands::probe_endpoints;
+    let snap = ClusterSnapshot::load(&fixtures_dir().join("shop-policies.json")).unwrap();
+
+    let (ns, pod, target) = probe_endpoints(&snap, "shop/web", "shop/db").unwrap();
+    assert_eq!((ns.as_str(), pod.as_str()), ("shop", "web"));
+    assert_eq!(target.to_string(), "10.0.1.12");
+
+    let (_, _, target) = probe_endpoints(&snap, "shop/web", "93.184.216.34").unwrap();
+    assert_eq!(target.to_string(), "93.184.216.34");
+
+    // A pod's own IP as --from still resolves to that pod.
+    let (_, pod, _) = probe_endpoints(&snap, "10.0.1.10", "shop/db").unwrap();
+    assert_eq!(pod, "web");
+
+    let err = probe_endpoints(&snap, "203.0.113.9", "shop/db").unwrap_err();
+    assert!(err.plain_message().contains("--from must be a pod"));
+}

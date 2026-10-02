@@ -83,6 +83,25 @@ k8s-netinspect can-reach --from shop/api --to shop/db -p 5432 -o json --from-sna
 
 Exit status: `0` allowed, `6` blocked, anything else is an error (for example `4` when a pod does not exist).
 
+#### Probing for real (`--probe`)
+
+```bash
+k8s-netinspect can-reach --from shop/web --to shop/db --port 5432 --probe
+k8s-netinspect can-reach --from shop/web --to shop/db --port 5432 --probe \
+  --probe-image registry.internal/tools/busybox:1.36 --probe-timeout 3
+```
+
+`--probe` runs one TCP connect from inside the source pod's network namespace and compares the result with the policy verdict; exit `8` means they disagree (policy says blocked but it connected, or allowed but packets are dropped).
+
+> **Untested against a live cluster.** The container spec, result classification and comparison are unit-tested; the code path that patches the pod and reads the result has never been run on a real cluster.
+
+Read before using it:
+
+- It **modifies the source pod**: an ephemeral container (`netinspect-probe-<timestamp>`) is added, exactly as `kubectl debug` does. It exits after one connect but stays listed in the pod spec until the pod is deleted.
+- It needs `patch` on `pods/ephemeralcontainers` in the source namespace, and the cluster must be able to pull the probe image (`busybox:1.36` by default; any image with `nc`).
+- The container is unprivileged: all capabilities dropped, no privilege escalation, and its command is a fixed argv (`nc -z -w <timeout> <ip> <port>`), not a shell string.
+- TCP only. It needs a live cluster and cannot be combined with `--from-snapshot`.
+
 This evaluates `networking.k8s.io/v1` NetworkPolicy plus the AdminNetworkPolicy and BaselineAdminNetworkPolicy tiers (`policy.networking.k8s.io/v1alpha1`), in the order the dataplane applies them. CNI-native policies (CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, Calico NetworkPolicy / GlobalNetworkPolicy) are detected but not interpreted: when one could apply to either endpoint the verdict is marked incomplete and names it. Service meshes and cloud firewalls are invisible to it, and it sends no traffic — "allowed" means no evaluated policy blocks the flow, not that the connection will succeed.
 
 ### Output formats and CI gating
@@ -103,7 +122,7 @@ k8s-netinspect diagnose --skip SVC-004 --fail-on warning
 k8s-netinspect rules
 ```
 
-Exit status: `0` success, `6` `can-reach` flow blocked, `7` `--fail-on` threshold met; `1`–`5` are errors (bad input, no cluster access, permission denied, ...).
+Exit status: `0` success, `6` `can-reach` flow blocked, `7` `--fail-on` threshold met, `8` `--probe` result contradicts the policy verdict; `1`–`5` are errors (bad input, no cluster access, permission denied, ...).
 
 ### Snapshot and offline analysis
 

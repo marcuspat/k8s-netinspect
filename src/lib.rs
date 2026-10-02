@@ -9,6 +9,7 @@ pub mod commands;
 pub mod errors;
 pub mod model;
 pub mod output;
+pub mod probe;
 pub mod rules;
 pub mod snapshot;
 pub mod validation;
