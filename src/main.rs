@@ -5,6 +5,7 @@ use std::process;
 use k8s_netinspect::analysis::policy::Protocol;
 use k8s_netinspect::commands::{self, ProbeOptions, ReachQuery, Source};
 use k8s_netinspect::errors::NetInspectResult;
+use k8s_netinspect::mcp::{Server, SnapshotSource};
 use k8s_netinspect::model::Severity;
 use k8s_netinspect::output::OutputFormat;
 use k8s_netinspect::probe;
@@ -42,6 +43,12 @@ enum Commands {
         /// Do not report these rules: ids or families, comma-separated
         #[arg(long, value_delimiter = ',', value_name = "RULES")]
         skip: Vec<String>,
+    },
+    /// Serve read-only diagnostics to AI agents over the Model Context Protocol (stdio)
+    Mcp {
+        /// Answer from a snapshot file instead of a live cluster
+        #[arg(long, value_name = "FILE")]
+        from_snapshot: Option<PathBuf>,
     },
     /// Explain one rule: what it means and how to investigate it
     Explain {
@@ -192,6 +199,17 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
                 }
             }
             Ok(())
+        }
+        Commands::Mcp { from_snapshot } => {
+            let source = match from_snapshot {
+                Some(path) => SnapshotSource::File(path.clone()),
+                None => {
+                    // Fail before the handshake, on stderr, if there is no cluster.
+                    validate_live(None).await?;
+                    SnapshotSource::Live
+                }
+            };
+            Server::new(source).serve().await
         }
         Commands::Explain { rule } => commands::explain(rule),
         Commands::Rules { format } => {

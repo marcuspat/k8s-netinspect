@@ -98,7 +98,7 @@ Standing constraints:
   NetworkPolicy YAML that would allow a blocked flow (never applies it);
   `explain <RULE-ID>`; remediation text carries copy-pasteable commands with
   the real namespace/name filled in.
-- [ ] **L12 — MCP server.** `k8s-netinspect mcp`: stdio JSON-RPC
+- [x] **L12 — MCP server.** `k8s-netinspect mcp`: stdio JSON-RPC
   (`initialize`, `tools/list`, `tools/call`) exposing read-only tools —
   `diagnose`, `can_reach`, `explain_rule`, `snapshot` — so coding/ops agents
   can query network state. No mutating tools. Protocol handler tests.
@@ -184,3 +184,11 @@ Standing constraints:
   hand and matched the generated objects; they were not applied to a
   cluster. `explain` gives per-family investigation steps, not per-rule
   ones; per-finding remediation text already carries the real object names.
+- 2026-10-02 — L12 landed: `k8s-netinspect mcp [--from-snapshot]`
+  (`src/mcp.rs`, hand-written JSON-RPC, no SDK dependency). Tools:
+  `diagnose`, `can_reach`, `explain_rule`, `list_rules`. 112 tests,
+  including a full session through the binary's stdio. The planned
+  `snapshot` tool was left out: a raw snapshot is large and carries more
+  cluster detail than an agent needs, and `diagnose` already returns the
+  analysis. Not exercised with a real MCP client; in live mode every
+  `diagnose` / `can_reach` call re-collects the cluster (no caching).

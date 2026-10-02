@@ -20,6 +20,7 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 - Service proxy: identifies kube-proxy (mode and version) or the CNI replacing it; flags kube-proxy not ready on every node, no Service proxy at all, kube-proxy left running next to a full replacement, and version skew against the API server and kubelets
 - Pod networking and IPAM: pods stuck without a network sandbox (grouped by node), duplicate pod IPs, overlapping node pod CIDRs, and — for CNIs that allocate from the node range — pod IPs outside it and ranges about to run out; IPv6 and dual-stack aware
 - Ingress and Gateway API: backends pointing at missing Services or ports, Ingresses no controller will claim, HTTPRoutes with a missing parent Gateway or an unresolved / un-granted cross-namespace backend, Gateways not programmed, routes the controller rejected
+- MCP server (`k8s-netinspect mcp`) exposing the diagnostics to AI agents as read-only tools
 - CI-friendly: `--output json|sarif|junit`, `--fail-on <severity>`, `--only` / `--skip` rule filters, and a rule catalog ([docs/RULES.md](docs/RULES.md))
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
@@ -133,6 +134,25 @@ k8s-netinspect rules
 ```
 
 Exit status: `0` success, `6` `can-reach` flow blocked, `7` `--fail-on` threshold met, `8` `--probe` result contradicts the policy verdict; `1`–`5` are errors (bad input, no cluster access, permission denied, ...).
+
+### For AI agents (MCP server)
+
+```bash
+k8s-netinspect mcp                              # live cluster, current kubeconfig context
+k8s-netinspect mcp --from-snapshot cluster.json # fixed snapshot, no cluster access
+```
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server over stdio. Register it in any MCP client as a stdio server, for example in a project `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "k8s-netinspect": { "command": "k8s-netinspect", "args": ["mcp"] }
+  }
+}
+```
+
+Tools: `diagnose`, `can_reach` (optionally with the suggested NetworkPolicy), `explain_rule`, `list_rules`. All are read-only — the pod-modifying `--probe` is deliberately not exposed, so an agent cannot change the cluster through this server. Tested at the protocol level and end to end through the binary's stdio; not yet exercised with a real MCP client.
 
 ### Snapshot and offline analysis
 

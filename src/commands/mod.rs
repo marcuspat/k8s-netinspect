@@ -107,7 +107,7 @@ pub async fn snapshot(namespace: Option<&str>, file: Option<&Path>) -> NetInspec
     Ok(())
 }
 
-async fn collect_snapshot(namespace: Option<&str>) -> NetInspectResult<ClusterSnapshot> {
+pub(crate) async fn collect_snapshot(namespace: Option<&str>) -> NetInspectResult<ClusterSnapshot> {
     let client = create_kubernetes_client().await?;
     match timeout(
         Duration::from_secs(60),
@@ -283,6 +283,22 @@ pub fn probe_endpoints(
         src.metadata.name.clone().unwrap_or_default(),
         target,
     ))
+}
+
+/// Resolve both endpoint specs into a [`Flow`] over `snapshot`.
+pub fn resolve_flow<'a>(
+    snapshot: &'a ClusterSnapshot,
+    from: &str,
+    to: &str,
+    port: u16,
+    protocol: Protocol,
+) -> NetInspectResult<Flow<'a>> {
+    Ok(Flow {
+        src: resolve_endpoint(snapshot, from)?,
+        dst: resolve_endpoint(snapshot, to)?,
+        port,
+        protocol,
+    })
 }
 
 /// Pure part of `can-reach`: resolve the endpoints and evaluate the flow.
