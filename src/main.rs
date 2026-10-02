@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process;
 
 use k8s_netinspect::analysis::policy::Protocol;
-use k8s_netinspect::commands::{self, ProbeOptions, Source};
+use k8s_netinspect::commands::{self, ProbeOptions, ReachQuery, Source};
 use k8s_netinspect::errors::NetInspectResult;
 use k8s_netinspect::model::Severity;
 use k8s_netinspect::output::OutputFormat;
@@ -43,6 +43,11 @@ enum Commands {
         #[arg(long, value_delimiter = ',', value_name = "RULES")]
         skip: Vec<String>,
     },
+    /// Explain one rule: what it means and how to investigate it
+    Explain {
+        /// Rule id, e.g. DNS-006
+        rule: String,
+    },
     /// List every rule diagnose can report
     Rules {
         /// Output format
@@ -80,6 +85,9 @@ enum Commands {
         /// Evaluate against a snapshot file instead of a live cluster
         #[arg(long, value_name = "FILE")]
         from_snapshot: Option<PathBuf>,
+        /// When blocked, print the NetworkPolicy that would allow the flow (never applied)
+        #[arg(long)]
+        suggest: bool,
         /// Also test for real: run one TCP connect from inside the source pod
         ///
         /// Adds an ephemeral container to the source pod (it cannot be removed
@@ -185,6 +193,7 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
             }
             Ok(())
         }
+        Commands::Explain { rule } => commands::explain(rule),
         Commands::Rules { format } => {
             commands::rules(*format == RulesFormat::Markdown);
             Ok(())
@@ -201,6 +210,7 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
             protocol,
             output,
             from_snapshot,
+            suggest,
             probe,
             probe_image,
             probe_timeout,
@@ -213,20 +223,19 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
                     Source::Live { namespace: None }
                 }
             };
-            let options = probe.then(|| ProbeOptions {
-                image: probe_image.clone(),
-                timeout_secs: *probe_timeout,
-            });
-            let report = commands::can_reach(
-                source,
+            let query = ReachQuery {
                 from,
                 to,
-                *port,
-                (*protocol).into(),
-                *output,
-                options.as_ref(),
-            )
-            .await?;
+                port: *port,
+                protocol: (*protocol).into(),
+                format: *output,
+                probe: probe.then(|| ProbeOptions {
+                    image: probe_image.clone(),
+                    timeout_secs: *probe_timeout,
+                }),
+                suggest: *suggest,
+            };
+            let report = commands::can_reach(source, &query).await?;
             if report.probe.as_ref().is_some_and(|p| !p.agrees) {
                 process::exit(EXIT_PROBE_MISMATCH);
             }

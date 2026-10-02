@@ -201,6 +201,37 @@ pub fn text() -> String {
     out
 }
 
+/// Where to look next, per rule family. Finding-specific fixes (with the
+/// real object names) come with each finding; this is the general method.
+fn investigation(category: &str) -> &'static str {
+    match category {
+        "collection" => "Grant the missing get/list permission, or accept that the dependent checks are skipped. `kubectl auth can-i list <resource> -A` shows what the current identity may read.",
+        "cni" => "Inspect the CNI agent DaemonSet and its pods on the affected nodes: `kubectl get ds -A`, then `kubectl -n <ns> logs <agent-pod>`. On the node, /etc/cni/net.d shows which plugin the runtime actually uses.",
+        "node" => "`kubectl describe node <node>` shows the conditions and their reasons; then check the kubelet and the CNI agent pod on that node.",
+        "pod" => "`kubectl describe pod` for the sandbox events (FailedCreatePodSandBox vs FailedMount); for address problems, compare `kubectl get pods -A -o wide` with `kubectl get nodes -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR` and inspect the CNI's IPAM state on the node.",
+        "policy" => "`kubectl get networkpolicy -A` and `kubectl describe networkpolicy`; compare selectors with `kubectl get pods --show-labels`. `k8s-netinspect can-reach --from A --to B --port N` shows which policy decides a given flow, and `--suggest` prints the policy that would allow it.",
+        "service" => "`kubectl -n <ns> get endpointslices -l kubernetes.io/service-name=<svc>` shows what the Service resolves to; compare its selector and targetPort with `kubectl get pods --show-labels` and the pods' containerPorts.",
+        "dns" => "`kubectl -n kube-system get deploy,svc,endpointslices -l k8s-app=kube-dns`, the CoreDNS logs, and `kubectl -n kube-system get cm coredns -o yaml`. From a pod: `nslookup kubernetes.default`.",
+        "proxy" => "`kubectl -n kube-system get ds kube-proxy` and its logs; `kubectl -n kube-system get cm kube-proxy -o yaml` for the mode. With Cilium, `kubectl -n kube-system get cm cilium-config -o yaml | grep kube-proxy-replacement`.",
+        "ingress" => "`kubectl describe ingress` (Events show what the controller thinks), `kubectl get ingressclass`, and the Service the backend names: `kubectl -n <ns> get svc <name> -o yaml`.",
+        "gateway" => "`kubectl describe gateway` / `kubectl describe httproute`: the status conditions carry the controller's reason. `kubectl get referencegrant -A` for cross-namespace backends.",
+        _ => "See the finding's own remediation text.",
+    }
+}
+
+/// Long-form description of one rule, for `explain`.
+pub fn explain(rule: &Rule) -> String {
+    format!(
+        "{id}  {title}\n\n  Category:  {category}\n  Severity:  {severity} (highest it can report)\n\n  What it means\n    {description}\n\n  How to investigate\n    {how}\n\n  Select or silence it with: --only {id} / --skip {id}\n",
+        id = rule.id,
+        title = rule.title,
+        category = rule.category,
+        severity = rule.severity,
+        description = rule.description,
+        how = investigation(rule.category),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +252,20 @@ mod tests {
                 r.id
             );
             assert!(!r.description.contains('|'), "{} breaks the table", r.id);
+        }
+    }
+
+    #[test]
+    fn every_rule_has_family_specific_guidance() {
+        for r in RULES {
+            assert!(
+                !investigation(r.category).starts_with("See the finding"),
+                "{} ({}) has no investigation guidance",
+                r.id,
+                r.category
+            );
+            let text = explain(r);
+            assert!(text.starts_with(r.id) && text.contains(r.description));
         }
     }
 

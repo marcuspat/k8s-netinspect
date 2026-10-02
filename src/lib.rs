@@ -12,6 +12,7 @@ pub mod output;
 pub mod probe;
 pub mod rules;
 pub mod snapshot;
+pub mod suggest;
 pub mod validation;
 
 // Re-export commonly used types for convenience

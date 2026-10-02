@@ -318,3 +318,258 @@ fn probe_endpoints_require_a_pod_source_and_resolve_the_target_address() {
     let err = probe_endpoints(&snap, "203.0.113.9", "shop/db").unwrap_err();
     assert!(err.plain_message().contains("--from must be a pod"));
 }
+
+// ---- can-reach --suggest and explain ----
+
+use k8s_netinspect::analysis::policy::{evaluate, Endpoint, Flow, Protocol};
+use k8s_netinspect::suggest::suggest;
+use k8s_openapi::api::core::v1::Pod;
+
+fn shop() -> ClusterSnapshot {
+    ClusterSnapshot::load(&fixtures_dir().join("shop-policies.json")).unwrap()
+}
+
+fn pod<'a>(snap: &'a ClusterSnapshot, ns: &str, name: &str) -> &'a Pod {
+    snap.pods
+        .iter()
+        .find(|p| {
+            p.metadata.namespace.as_deref() == Some(ns) && p.metadata.name.as_deref() == Some(name)
+        })
+        .unwrap()
+}
+
+fn flow<'a>(src: Endpoint<'a>, dst: Endpoint<'a>, port: u16) -> Flow<'a> {
+    Flow {
+        src,
+        dst,
+        port,
+        protocol: Protocol::Tcp,
+    }
+}
+
+#[test]
+fn suggestion_covers_both_blocked_directions_and_is_verified() {
+    let snap = shop();
+    let f = flow(
+        Endpoint::Pod(pod(&snap, "shop", "web")),
+        Endpoint::Pod(pod(&snap, "shop", "db")),
+        5432,
+    );
+    assert!(!evaluate(&snap, &f).allowed);
+
+    let s = suggest(&snap, &f);
+    assert!(s.verified, "notes: {:?}", s.notes);
+    assert_eq!(s.policies.len(), 2);
+    let names: Vec<&str> = s
+        .policies
+        .iter()
+        .map(|p| p.metadata.name.as_deref().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["allow-web-to-db-5432", "allow-db-from-web-5432"]
+    );
+    assert!(s
+        .policies
+        .iter()
+        .all(|p| p.metadata.namespace.as_deref() == Some("shop")));
+
+    assert_eq!(
+        s.yaml,
+        "\
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-to-db-5432
+  namespace: shop
+spec:
+  egress:
+  - ports:
+    - port: 5432
+      protocol: TCP
+    to:
+    - podSelector:
+        matchLabels:
+          app: db
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-db-from-web-5432
+  namespace: shop
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web
+    ports:
+    - port: 5432
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+  - Ingress
+"
+    );
+
+    // The suggestion is minimal: it does not open any other port or peer.
+    let mut patched = snap.clone();
+    patched.network_policies.extend(s.policies.clone());
+    let allowed = |from: &str, to: &str, port: u16| {
+        evaluate(
+            &patched,
+            &flow(
+                Endpoint::Pod(pod(&patched, "shop", from)),
+                Endpoint::Pod(pod(&patched, "shop", to)),
+                port,
+            ),
+        )
+        .allowed
+    };
+    assert!(allowed("web", "db", 5432));
+    assert!(!allowed("web", "db", 5433));
+    assert!(!allowed("api", "db", 5432));
+}
+
+#[test]
+fn suggestion_only_fixes_the_side_that_blocks_and_crosses_namespaces() {
+    let snap = shop();
+    // ops/prom is not egress-isolated: only shop/api's ingress needs a policy.
+    let f = flow(
+        Endpoint::Pod(pod(&snap, "ops", "prom")),
+        Endpoint::Pod(pod(&snap, "shop", "api")),
+        8080,
+    );
+    let s = suggest(&snap, &f);
+    assert!(s.verified);
+    assert_eq!(s.policies.len(), 1);
+    assert!(s.yaml.contains("name: allow-api-from-prometheus-8080"));
+    assert!(s.yaml.contains("kubernetes.io/metadata.name: ops"));
+    assert!(s.yaml.contains("app: prometheus"));
+
+    // External destination: an ipBlock /32 egress rule.
+    let f = flow(
+        Endpoint::Pod(pod(&snap, "shop", "web")),
+        Endpoint::Ip("93.184.216.34".parse().unwrap()),
+        443,
+    );
+    let s = suggest(&snap, &f);
+    assert!(s.verified);
+    assert_eq!(s.policies.len(), 1);
+    assert!(s.yaml.contains("cidr: 93.184.216.34/32"));
+
+    // Already allowed: nothing to add.
+    let f = flow(
+        Endpoint::Pod(pod(&snap, "shop", "web")),
+        Endpoint::Pod(pod(&snap, "shop", "api")),
+        8080,
+    );
+    let s = suggest(&snap, &f);
+    assert!(s.policies.is_empty() && s.yaml.is_empty() && !s.verified);
+    assert!(s.notes[0].contains("already allowed"));
+}
+
+#[test]
+fn suggestion_is_honest_about_what_network_policy_cannot_fix() {
+    // An AdminNetworkPolicy deny outranks any NetworkPolicy.
+    let mut snap = shop();
+    snap.admin_network_policies.push(
+        serde_json::from_value(serde_json::json!({
+            "apiVersion": "policy.networking.k8s.io/v1alpha1", "kind": "AdminNetworkPolicy",
+            "metadata": {"name": "lockdown"},
+            "spec": {"priority": 1, "subject": {"namespaces": {}},
+                     "ingress": [{"action": "Deny", "from": [{"namespaces": {}}]}]}
+        }))
+        .unwrap(),
+    );
+    let f = flow(
+        Endpoint::Pod(pod(&snap, "shop", "web")),
+        Endpoint::Pod(pod(&snap, "shop", "db")),
+        5432,
+    );
+    let s = suggest(&snap, &f);
+    assert!(!s.verified);
+    assert_eq!(s.policies.len(), 1, "only the egress half is fixable");
+    assert!(s
+        .notes
+        .iter()
+        .any(|n| n.contains("AdminNetworkPolicy 'lockdown'")
+            && n.contains("no NetworkPolicy can allow this flow")));
+    assert!(s.notes.iter().any(|n| n.contains("would not be enough")));
+
+    // Volatile labels are never used; a pod with nothing else cannot be selected.
+    let mut snap = shop();
+    for p in &mut snap.pods {
+        if p.metadata.name.as_deref() == Some("db") {
+            p.metadata.labels =
+                Some([("pod-template-hash".to_string(), "5d78c9869d".to_string())].into());
+        }
+    }
+    let f = flow(
+        Endpoint::Pod(pod(&snap, "shop", "web")),
+        Endpoint::Pod(pod(&snap, "shop", "db")),
+        5432,
+    );
+    let s = suggest(&snap, &f);
+    assert!(s.policies.is_empty());
+    assert!(!s.yaml.contains("pod-template-hash"));
+    assert!(s
+        .notes
+        .iter()
+        .any(|n| n.contains("shop/db has no stable labels")));
+}
+
+#[test]
+fn cli_suggest_and_explain() {
+    let f = fixture("shop-policies");
+    let base = [
+        "can-reach",
+        "--from",
+        "shop/web",
+        "--to",
+        "shop/db",
+        "-p",
+        "5432",
+        "--suggest",
+        "--from-snapshot",
+        f.as_str(),
+    ];
+    let out = run(&base);
+    assert_eq!(
+        out.status.code(),
+        Some(6),
+        "the verdict, not the suggestion, sets the status"
+    );
+    let text = stdout(&out);
+    assert!(
+        text.contains("Suggested NetworkPolicy — review before applying; nothing has been changed")
+    );
+    assert!(text.contains("(re-evaluated: with this added, the flow is allowed)"));
+    assert!(text.contains("  name: allow-web-to-db-5432\n"));
+
+    let out = run(&[&base[..], &["-o", "json"]].concat());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["suggestion"]["verified"], true);
+    assert_eq!(
+        v["suggestion"]["policies"][1]["spec"]["policyTypes"][0],
+        "Ingress"
+    );
+
+    let out = run(&["explain", "dns-006"]);
+    assert!(out.status.success());
+    let text = stdout(&out);
+    assert!(text.starts_with("DNS-006  CoreDNS forwards to itself"));
+    assert!(text.contains("How to investigate"));
+    assert!(text.contains("--skip DNS-006"));
+
+    let out = run(&["explain", "NOPE-001"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Unknown rule 'NOPE-001'"));
+}

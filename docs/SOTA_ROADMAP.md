@@ -94,7 +94,7 @@ Standing constraints:
   cleaned up, RBAC pre-check), and report observed vs policy-predicted
   verdict; a mismatch is a finding. Pod-spec builder and result parser are
   unit-tested; the live path is labelled untested until run on a cluster.
-- [ ] **L11 — Remediation.** `can-reach --suggest` emits the minimal
+- [x] **L11 — Remediation.** `can-reach --suggest` emits the minimal
   NetworkPolicy YAML that would allow a blocked flow (never applies it);
   `explain <RULE-ID>`; remediation text carries copy-pasteable commands with
   the real namespace/name filled in.
@@ -178,3 +178,9 @@ Standing constraints:
   is a prediction to compare with), not `test-pod`, which now prints a note
   about its vantage point. No RBAC pre-check: a 403 on the patch is mapped
   to a message naming the missing permission.
+- 2026-10-02 — L11 landed: `can-reach --suggest` (`src/suggest.rs`, with a
+  small JSON→YAML emitter — no new dependency) and `explain <RULE-ID>`.
+  104 tests. Suggested manifests were round-tripped through PyYAML once by
+  hand and matched the generated objects; they were not applied to a
+  cluster. `explain` gives per-family investigation steps, not per-rule
+  ones; per-finding remediation text already carries the real object names.

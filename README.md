@@ -83,6 +83,16 @@ k8s-netinspect can-reach --from shop/api --to shop/db -p 5432 -o json --from-sna
 
 Exit status: `0` allowed, `6` blocked, anything else is an error (for example `4` when a pod does not exist).
 
+#### Getting the fix (`--suggest`)
+
+```bash
+k8s-netinspect can-reach --from ops/prom --to shop/api --port 8080 --suggest
+```
+
+When a flow is blocked by NetworkPolicy, `--suggest` prints the smallest additional NetworkPolicy that would allow it — one per blocked direction, selecting the workload by its stable labels (never `pod-template-hash` and the like) and allowing only that peer and port. The suggestion is re-evaluated against the same data before it is shown, and nothing is ever applied to the cluster. When the block comes from an AdminNetworkPolicy, it says that no NetworkPolicy can override it instead of offering something that would not work.
+
+`k8s-netinspect explain <RULE-ID>` describes any rule and how to investigate it.
+
 #### Probing for real (`--probe`)
 
 ```bash

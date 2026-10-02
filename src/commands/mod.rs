@@ -17,6 +17,7 @@ use crate::output::{self, OutputFormat};
 use crate::probe::{self, Observation, ProbeReport, ProbeSpec};
 use crate::rules::Filter;
 use crate::snapshot::ClusterSnapshot;
+use crate::suggest::Suggestion;
 use crate::validation::Validator;
 
 /// Where `diagnose` gets its data from.
@@ -57,6 +58,17 @@ pub async fn diagnose(
         _ => println!("{}", output::render(&report, format)?),
     }
     Ok(report)
+}
+
+/// Print the long description of one rule.
+pub fn explain(id: &str) -> NetInspectResult<()> {
+    let rule = crate::rules::find(id).ok_or_else(|| {
+        NetInspectError::InvalidInput(format!(
+            "Unknown rule '{id}'. Run `k8s-netinspect rules` for the catalog."
+        ))
+    })?;
+    print!("{}", crate::rules::explain(rule));
+    Ok(())
 }
 
 /// Print the rule catalog.
@@ -122,6 +134,9 @@ pub struct ReachReport {
     /// Present when `--probe` ran.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub probe: Option<ProbeReport>,
+    /// Present when `--suggest` was given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<Suggestion>,
 }
 
 /// Options for the opt-in in-cluster probe.
@@ -133,15 +148,34 @@ pub struct ProbeOptions {
 
 /// Would NetworkPolicy let `from` talk to `to` on `port`? Endpoints are
 /// `namespace/pod`, a bare pod name (namespace `default`), or an IP address.
+/// The flow a `can-reach` invocation asks about, and what to do with it.
+#[derive(Debug, Clone)]
+pub struct ReachQuery<'a> {
+    pub from: &'a str,
+    pub to: &'a str,
+    pub port: u16,
+    pub protocol: Protocol,
+    pub format: OutputFormat,
+    /// Run the in-cluster probe (modifies the source pod).
+    pub probe: Option<ProbeOptions>,
+    /// Compute the NetworkPolicy that would allow a blocked flow.
+    pub suggest: bool,
+}
+
 pub async fn can_reach(
     source: Source<'_>,
-    from: &str,
-    to: &str,
-    port: u16,
-    protocol: Protocol,
-    format: OutputFormat,
-    probe: Option<&ProbeOptions>,
+    query: &ReachQuery<'_>,
 ) -> NetInspectResult<ReachReport> {
+    let ReachQuery {
+        from,
+        to,
+        port,
+        protocol,
+        format,
+        suggest,
+        ..
+    } = *query;
+    let probe = query.probe.as_ref();
     if matches!(format, OutputFormat::Sarif | OutputFormat::Junit) {
         return Err(NetInspectError::InvalidInput(
             "can-reach supports --output text or json".to_string(),
@@ -168,6 +202,15 @@ pub async fn can_reach(
         Source::File(path) => ClusterSnapshot::load(path)?,
     };
     let mut report = evaluate_reach(&snapshot, from, to, port, protocol)?;
+    if suggest {
+        let flow = Flow {
+            src: resolve_endpoint(&snapshot, from)?,
+            dst: resolve_endpoint(&snapshot, to)?,
+            port,
+            protocol,
+        };
+        report.suggestion = Some(crate::suggest::suggest(&snapshot, &flow));
+    }
 
     if let Some(options) = probe {
         let (namespace, pod, target) = probe_endpoints(&snapshot, from, to)?;
@@ -268,6 +311,7 @@ pub fn evaluate_reach(
         protocol,
         verdict,
         probe: None,
+        suggestion: None,
     })
 }
 
@@ -368,6 +412,24 @@ fn render_reach(report: &ReachReport) -> String {
             "  {} Verdict is incomplete — treat it as a lower bound, not proof.\n",
             "⚠".yellow().bold()
         ));
+    }
+    if let Some(sg) = &report.suggestion {
+        if !sg.policies.is_empty() {
+            out.push_str(&format!(
+                "\n{} — review before applying; nothing has been changed{}:\n\n",
+                "Suggested NetworkPolicy".bold(),
+                if sg.verified {
+                    " (re-evaluated: with this added, the flow is allowed)"
+                } else {
+                    ""
+                }
+            ));
+            out.push_str(&sg.yaml);
+            out.push('\n');
+        }
+        for note in &sg.notes {
+            out.push_str(&format!("  {} {}\n", "•".dimmed(), note));
+        }
     }
     if let Some(p) = &report.probe {
         let observed = match p.observed {
