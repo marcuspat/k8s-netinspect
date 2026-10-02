@@ -573,3 +573,196 @@ fn cli_suggest_and_explain() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("Unknown rule 'NOPE-001'"));
 }
+
+// ---- diff, watch, Prometheus ----
+
+#[test]
+fn diff_command_reports_regressions_and_gates_on_them() {
+    let (healthy, broken) = (fixture("healthy-cilium"), fixture("dns-broken"));
+
+    let out = run(&["diff", &healthy, &broken]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "without --fail-on a diff never fails"
+    );
+    let text = stdout(&out);
+    assert!(
+        text.starts_with("5 new, 0 resolved, 0 changed, 0 unchanged\n"),
+        "{text}"
+    );
+    assert!(text.contains("+ [DNS-005] error Corefile has no kubernetes plugin"));
+
+    // Reversed, the same findings are resolved — and that is not a regression.
+    let out = run(&["diff", &broken, &healthy, "--fail-on", "info"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(stdout(&out).starts_with("0 new, 5 resolved, 0 changed, 0 unchanged\n"));
+
+    assert_eq!(
+        run(&["diff", &healthy, &broken, "--fail-on", "error"])
+            .status
+            .code(),
+        Some(7)
+    );
+    assert_eq!(
+        run(&["diff", &healthy, &broken, "--fail-on", "critical"])
+            .status
+            .code(),
+        Some(0)
+    );
+    // Filters narrow what counts as a regression.
+    let out = run(&[
+        "diff",
+        &healthy,
+        &broken,
+        "--fail-on",
+        "error",
+        "--only",
+        "DNS-001",
+    ]);
+    assert_eq!(out.status.code(), Some(0), "DNS-001 is only a warning here");
+
+    let out = run(&["diff", &healthy, &healthy]);
+    assert!(stdout(&out).contains("No changes (0 finding(s) unchanged)"));
+
+    let out = run(&["diff", &healthy, &broken, "-o", "json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["new"].as_array().unwrap().len(), 5);
+    assert_eq!(v["new"][0]["severity"], "error");
+    assert_eq!(v["resolved"].as_array().unwrap().len(), 0);
+    assert_eq!(v["unchanged"], 0);
+
+    assert_eq!(
+        run(&["diff", &healthy, &broken, "-o", "sarif"])
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&["diff", &healthy, "/nonexistent.json"]).status.code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn watch_prints_the_report_once_and_then_only_deltas() {
+    let f = fixture("calico-degraded");
+    let out = run(&[
+        "diagnose",
+        "--from-snapshot",
+        &f,
+        "--watch",
+        "1",
+        "--watch-count",
+        "3",
+        "--fail-on",
+        "error",
+    ]);
+    let text = stdout(&out);
+    assert_eq!(
+        text.matches("Findings (4)").count(),
+        1,
+        "full report only in round 1"
+    );
+    assert_eq!(
+        text.matches("No changes (4 finding(s) unchanged)").count(),
+        2
+    );
+    assert!(
+        text.contains("[round 2]") && text.contains("[round 3]") && !text.contains("[round 4]")
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(7),
+        "--fail-on applies to the final state"
+    );
+
+    // Deltas are text; machine formats and a bare --watch-count are rejected.
+    assert_eq!(
+        run(&[
+            "diagnose",
+            "--from-snapshot",
+            &f,
+            "--watch",
+            "1",
+            "-o",
+            "json"
+        ])
+        .status
+        .code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&["diagnose", "--from-snapshot", &f, "--watch-count", "2"])
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&["diagnose", "--from-snapshot", &f, "--watch", "0"])
+            .status
+            .code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn prometheus_output_is_well_formed_and_zero_filled() {
+    let out = run(&[
+        "diagnose",
+        "-o",
+        "prometheus",
+        "--from-snapshot",
+        &fixture("calico-degraded"),
+    ]);
+    assert!(out.status.success());
+    let text = stdout(&out);
+
+    let mut series = 0;
+    for line in text.lines() {
+        if line.starts_with('#') {
+            assert!(
+                line.starts_with("# HELP ") || line.starts_with("# TYPE "),
+                "{line}"
+            );
+            continue;
+        }
+        // name{labels} value  |  name value
+        let (name, value) = line.rsplit_once(' ').expect("sample line");
+        assert!(name.starts_with("k8s_netinspect_"), "{line}");
+        assert!(value.parse::<u64>().is_ok(), "{line}");
+        series += 1;
+    }
+    // info + one per rule + four severities + nodes + pods
+    assert_eq!(series, 1 + RULES.len() + 4 + 2);
+    assert!(text.contains("k8s_netinspect_rule_findings{rule=\"CNI-002\",category=\"cni\"} 1\n"));
+    assert!(text.contains("k8s_netinspect_rule_findings{rule=\"DNS-001\",category=\"dns\"} 0\n"));
+    assert!(text.contains("k8s_netinspect_findings{severity=\"error\"} 3\n"));
+    assert!(text.contains("k8s_netinspect_findings{severity=\"info\"} 1\n"));
+    assert!(text.contains("k8s_netinspect_nodes 3\n"));
+    // Every metric family is declared exactly once.
+    for family in ["info", "rule_findings", "findings", "nodes", "pods"] {
+        assert_eq!(
+            text.matches(&format!("# TYPE k8s_netinspect_{family} gauge"))
+                .count(),
+            1
+        );
+    }
+
+    // Filtered rules get no series at all.
+    let out = run(&[
+        "diagnose",
+        "-o",
+        "prometheus",
+        "--only",
+        "NODE",
+        "--from-snapshot",
+        &fixture("calico-degraded"),
+    ]);
+    assert_eq!(
+        stdout(&out)
+            .matches("k8s_netinspect_rule_findings{")
+            .count(),
+        3
+    );
+}

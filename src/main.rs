@@ -4,7 +4,7 @@ use std::process;
 
 use k8s_netinspect::analysis::policy::Protocol;
 use k8s_netinspect::commands::{self, ProbeOptions, ReachQuery, Source};
-use k8s_netinspect::errors::NetInspectResult;
+use k8s_netinspect::errors::{NetInspectError, NetInspectResult};
 use k8s_netinspect::mcp::{Server, SnapshotSource};
 use k8s_netinspect::model::Severity;
 use k8s_netinspect::output::OutputFormat;
@@ -41,6 +41,33 @@ enum Commands {
         #[arg(long, value_delimiter = ',', value_name = "RULES")]
         only: Vec<String>,
         /// Do not report these rules: ids or families, comma-separated
+        #[arg(long, value_delimiter = ',', value_name = "RULES")]
+        skip: Vec<String>,
+        /// Re-run every N seconds and print only what changed (text output)
+        #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
+        watch: Option<u64>,
+        /// With --watch: stop after this many rounds instead of running until interrupted
+        #[arg(long, value_name = "N", requires = "watch", value_parser = clap::value_parser!(u32).range(1..))]
+        watch_count: Option<u32>,
+    },
+    /// Compare two snapshots: new, resolved and changed findings
+    ///
+    /// Exits 7 with --fail-on when a new or worsened finding meets the severity.
+    Diff {
+        /// Snapshot taken first
+        before: PathBuf,
+        /// Snapshot taken later
+        after: PathBuf,
+        /// Output format (text or json)
+        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
+        output: OutputFormat,
+        /// Exit with status 7 if a new or worsened finding is at or above this severity
+        #[arg(long, value_enum, value_name = "SEVERITY")]
+        fail_on: Option<Severity>,
+        /// Compare only these rules: ids or families, comma-separated
+        #[arg(long, value_delimiter = ',', value_name = "RULES")]
+        only: Vec<String>,
+        /// Ignore these rules: ids or families, comma-separated
         #[arg(long, value_delimiter = ',', value_name = "RULES")]
         skip: Vec<String>,
     },
@@ -179,11 +206,19 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
             fail_on,
             only,
             skip,
+            watch,
+            watch_count,
         } => {
             let filter = Filter {
                 only: only.clone(),
                 skip: skip.clone(),
             };
+            if watch.is_some() && *output != OutputFormat::Text {
+                return Err(NetInspectError::InvalidInput(
+                    "--watch prints deltas as text; it cannot be combined with --output"
+                        .to_string(),
+                ));
+            }
             let source = match from_snapshot {
                 Some(path) => Source::File(path),
                 None => {
@@ -192,8 +227,34 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
                     Source::Live { namespace }
                 }
             };
-            let report = commands::diagnose(source, *output, &filter).await?;
+            let report = match watch {
+                Some(seconds) => {
+                    let interval = std::time::Duration::from_secs(*seconds);
+                    commands::watch(source, &filter, interval, *watch_count).await?
+                }
+                None => commands::diagnose(source, *output, &filter).await?,
+            };
             if let (Some(threshold), Some(worst)) = (fail_on, report.max_severity()) {
+                if worst >= *threshold {
+                    process::exit(EXIT_FINDINGS);
+                }
+            }
+            Ok(())
+        }
+        Commands::Diff {
+            before,
+            after,
+            output,
+            fail_on,
+            only,
+            skip,
+        } => {
+            let filter = Filter {
+                only: only.clone(),
+                skip: skip.clone(),
+            };
+            let delta = commands::diff_snapshots(before, after, *output, &filter)?;
+            if let (Some(threshold), Some(worst)) = (fail_on, delta.worst_regression()) {
                 if worst >= *threshold {
                     process::exit(EXIT_FINDINGS);
                 }

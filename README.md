@@ -21,7 +21,8 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 - Pod networking and IPAM: pods stuck without a network sandbox (grouped by node), duplicate pod IPs, overlapping node pod CIDRs, and — for CNIs that allocate from the node range — pod IPs outside it and ranges about to run out; IPv6 and dual-stack aware
 - Ingress and Gateway API: backends pointing at missing Services or ports, Ingresses no controller will claim, HTTPRoutes with a missing parent Gateway or an unresolved / un-granted cross-namespace backend, Gateways not programmed, routes the controller rejected
 - MCP server (`k8s-netinspect mcp`) exposing the diagnostics to AI agents as read-only tools
-- CI-friendly: `--output json|sarif|junit`, `--fail-on <severity>`, `--only` / `--skip` rule filters, and a rule catalog ([docs/RULES.md](docs/RULES.md))
+- `diff` between two snapshots, `diagnose --watch`, and Prometheus metrics
+- CI-friendly: `--output json|sarif|junit|prometheus`, `--fail-on <severity>`, `--only` / `--skip` rule filters, and a rule catalog ([docs/RULES.md](docs/RULES.md))
 - Offline analysis: `snapshot` captures a redacted cluster state file, `diagnose --from-snapshot` analyzes it with no cluster access
 - Partial diagnosis under restricted RBAC — lists that are forbidden are reported as skipped, not as healthy
 - Pod connectivity testing with HTTP checks
@@ -134,6 +135,25 @@ k8s-netinspect rules
 ```
 
 Exit status: `0` success, `6` `can-reach` flow blocked, `7` `--fail-on` threshold met, `8` `--probe` result contradicts the policy verdict; `1`–`5` are errors (bad input, no cluster access, permission denied, ...).
+
+### Before / after and watching
+
+```bash
+# What changed between two snapshots? (incident before/after, upgrade verification)
+k8s-netinspect snapshot --file before.json
+#   ... upgrade the CNI, roll out the policy, wait for the incident to end ...
+k8s-netinspect snapshot --file after.json
+k8s-netinspect diff before.json after.json
+k8s-netinspect diff before.json after.json --fail-on error   # exit 7 on a new or worsened error
+
+# Re-diagnose every 30 seconds, printing only what changed
+k8s-netinspect diagnose --watch 30
+
+# Metrics for the node-exporter textfile collector
+k8s-netinspect diagnose -o prometheus > /var/lib/node_exporter/textfile/netinspect.prom
+```
+
+`diff` treats a finding as the same problem when its rule, object and title match, so "1 of 3 ready" becoming "2 of 3 ready" shows as *changed*, not as one resolved and one new. Only new findings and findings that got more severe count towards `--fail-on`.
 
 ### For AI agents (MCP server)
 

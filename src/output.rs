@@ -17,6 +17,8 @@ pub enum OutputFormat {
     Sarif,
     /// JUnit XML, one test case per rule
     Junit,
+    /// Prometheus text exposition (e.g. for the node-exporter textfile collector)
+    Prometheus,
 }
 
 pub fn render(report: &Report, format: OutputFormat) -> NetInspectResult<String> {
@@ -27,6 +29,7 @@ pub fn render(report: &Report, format: OutputFormat) -> NetInspectResult<String>
         OutputFormat::Sarif => serde_json::to_string_pretty(&render_sarif(report))
             .map_err(|e| NetInspectError::Runtime(format!("Failed to serialize SARIF: {e}"))),
         OutputFormat::Junit => Ok(render_junit(report, &Filter::default())),
+        OutputFormat::Prometheus => Ok(render_prometheus(report, &Filter::default())),
     }
 }
 
@@ -281,5 +284,63 @@ pub fn render_junit(report: &Report, filter: &Filter) -> String {
         out.push_str("    </testcase>\n");
     }
     out.push_str("  </testsuite>\n</testsuites>\n");
+    out
+}
+
+fn prom_label(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+/// Prometheus text exposition format. One `k8s_netinspect_rule_findings`
+/// series per in-scope rule — zero when clean, so alerts never depend on a
+/// series being absent — plus per-severity totals.
+pub fn render_prometheus(report: &Report, filter: &Filter) -> String {
+    let mut out = String::new();
+    out.push_str("# HELP k8s_netinspect_info Tool version that produced this scrape.\n");
+    out.push_str("# TYPE k8s_netinspect_info gauge\n");
+    out.push_str(&format!(
+        "k8s_netinspect_info{{version=\"{}\"}} 1\n",
+        prom_label(&report.tool_version)
+    ));
+
+    out.push_str("# HELP k8s_netinspect_rule_findings Findings currently reported, per rule.\n");
+    out.push_str("# TYPE k8s_netinspect_rule_findings gauge\n");
+    for r in rules::RULES.iter().filter(|r| filter.allows(r.id)) {
+        let count = report.findings.iter().filter(|f| f.id == r.id).count();
+        out.push_str(&format!(
+            "k8s_netinspect_rule_findings{{rule=\"{}\",category=\"{}\"}} {}\n",
+            r.id,
+            prom_label(r.category),
+            count
+        ));
+    }
+
+    out.push_str("# HELP k8s_netinspect_findings Findings currently reported, per severity.\n");
+    out.push_str("# TYPE k8s_netinspect_findings gauge\n");
+    for severity in [
+        Severity::Critical,
+        Severity::Error,
+        Severity::Warning,
+        Severity::Info,
+    ] {
+        let count = report
+            .findings
+            .iter()
+            .filter(|f| f.severity == severity)
+            .count();
+        out.push_str(&format!(
+            "k8s_netinspect_findings{{severity=\"{severity}\"}} {count}\n"
+        ));
+    }
+
+    out.push_str("# HELP k8s_netinspect_nodes Nodes in the analyzed snapshot.\n");
+    out.push_str("# TYPE k8s_netinspect_nodes gauge\n");
+    out.push_str(&format!("k8s_netinspect_nodes {}\n", report.summary.nodes));
+    out.push_str("# HELP k8s_netinspect_pods Pods in the analyzed snapshot.\n");
+    out.push_str("# TYPE k8s_netinspect_pods gauge\n");
+    out.push_str(&format!("k8s_netinspect_pods {}\n", report.summary.pods));
     out
 }

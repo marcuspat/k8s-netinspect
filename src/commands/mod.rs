@@ -21,6 +21,7 @@ use crate::suggest::Suggestion;
 use crate::validation::Validator;
 
 /// Where `diagnose` gets its data from.
+#[derive(Debug, Clone, Copy)]
 pub enum Source<'a> {
     /// Collect from the cluster in the current kubeconfig context.
     Live { namespace: Option<&'a str> },
@@ -33,31 +34,106 @@ pub async fn diagnose(
     format: OutputFormat,
     filter: &Filter,
 ) -> NetInspectResult<Report> {
-    let unknown = filter.unknown_selectors();
-    if !unknown.is_empty() {
-        return Err(NetInspectError::InvalidInput(format!(
-            "Unknown rule selector(s): {}. Run `k8s-netinspect rules` for the catalog.",
-            unknown.join(", ")
-        )));
-    }
+    check_filter(filter)?;
     if format == OutputFormat::Text {
         println!("{}", "🔍 Starting network diagnosis...".cyan().bold());
     }
+    let report = analyze_source(source, filter).await?;
+    print_report(&report, format, filter)?;
+    Ok(report)
+}
 
+fn check_filter(filter: &Filter) -> NetInspectResult<()> {
+    let unknown = filter.unknown_selectors();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    Err(NetInspectError::InvalidInput(format!(
+        "Unknown rule selector(s): {}. Run `k8s-netinspect rules` for the catalog.",
+        unknown.join(", ")
+    )))
+}
+
+async fn analyze_source(source: Source<'_>, filter: &Filter) -> NetInspectResult<Report> {
     let snapshot = match source {
         Source::Live { namespace } => collect_snapshot(namespace).await?,
         Source::File(path) => ClusterSnapshot::load(path)?,
     };
-
     let mut report = analysis::analyze(&snapshot);
     filter.apply(&mut report.findings);
-    match format {
-        // JUnit lists the rules that were in scope, so it needs the filter.
-        OutputFormat::Junit => print!("{}", output::render_junit(&report, filter)),
-        OutputFormat::Text => print!("{}", output::render(&report, format)?),
-        _ => println!("{}", output::render(&report, format)?),
-    }
     Ok(report)
+}
+
+fn print_report(report: &Report, format: OutputFormat, filter: &Filter) -> NetInspectResult<()> {
+    match format {
+        // These list the rules that were in scope, so they need the filter.
+        OutputFormat::Junit => print!("{}", output::render_junit(report, filter)),
+        OutputFormat::Prometheus => print!("{}", output::render_prometheus(report, filter)),
+        OutputFormat::Text => print!("{}", output::render(report, format)?),
+        _ => println!("{}", output::render(report, format)?),
+    }
+    Ok(())
+}
+
+/// Diagnose repeatedly, printing the full report once and then only what
+/// changed. Runs `rounds` times, or until interrupted when `None`. Returns
+/// the last report.
+pub async fn watch(
+    source: Source<'_>,
+    filter: &Filter,
+    interval: Duration,
+    rounds: Option<u32>,
+) -> NetInspectResult<Report> {
+    check_filter(filter)?;
+    println!("{}", "🔍 Starting network diagnosis...".cyan().bold());
+    let mut previous = analyze_source(source, filter).await?;
+    print_report(&previous, OutputFormat::Text, filter)?;
+
+    let mut round = 1u32;
+    while rounds.is_none_or(|limit| round < limit) {
+        tokio::time::sleep(interval).await;
+        round += 1;
+        // A failed round (API blip) must not end the watch.
+        match analyze_source(source, filter).await {
+            Ok(current) => {
+                let delta = crate::diff::diff(&previous, &current);
+                print!("\n[round {round}] {}", crate::diff::render_text(&delta));
+                previous = current;
+            }
+            Err(e) => println!("\n[round {round}] {} {}", "⚠".yellow().bold(), e),
+        }
+    }
+    Ok(previous)
+}
+
+/// Compare the diagnoses of two snapshot files.
+pub fn diff_snapshots(
+    before: &Path,
+    after: &Path,
+    format: OutputFormat,
+    filter: &Filter,
+) -> NetInspectResult<crate::diff::Diff> {
+    check_filter(filter)?;
+    let analyze = |path: &Path| -> NetInspectResult<Report> {
+        let mut report = analysis::analyze(&ClusterSnapshot::load(path)?);
+        filter.apply(&mut report.findings);
+        Ok(report)
+    };
+    let delta = crate::diff::diff(&analyze(before)?, &analyze(after)?);
+    match format {
+        OutputFormat::Text => print!("{}", crate::diff::render_text(&delta)),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&delta)
+                .map_err(|e| NetInspectError::Runtime(format!("Failed to serialize diff: {e}")))?
+        ),
+        _ => {
+            return Err(NetInspectError::InvalidInput(
+                "diff supports --output text or json".to_string(),
+            ))
+        }
+    }
+    Ok(delta)
 }
 
 /// Print the long description of one rule.
@@ -176,7 +252,7 @@ pub async fn can_reach(
         ..
     } = *query;
     let probe = query.probe.as_ref();
-    if matches!(format, OutputFormat::Sarif | OutputFormat::Junit) {
+    if !matches!(format, OutputFormat::Text | OutputFormat::Json) {
         return Err(NetInspectError::InvalidInput(
             "can-reach supports --output text or json".to_string(),
         ));

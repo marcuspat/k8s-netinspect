@@ -107,7 +107,7 @@ Standing constraints:
   matching k8s-openapi, reqwest 0.12, compile regexes once; in-cluster config
   support (the pre-flight currently rejects a pod with no kubeconfig);
   decide and document the MSRV; `cargo audit` if the advisory DB is reachable.
-- [ ] **L14 — Snapshot diff and watch.** `diff <before> <after>`: new,
+- [x] **L14 — Snapshot diff and watch.** `diff <before> <after>`: new,
   resolved and changed findings between two snapshots (incident before/after,
   upgrade verification); `diagnose --watch <interval>` printing only deltas;
   Prometheus text exposition of finding counts by rule and severity.
@@ -205,3 +205,9 @@ Standing constraints:
   NetworkPolicy `podSelector` became optional (an omitted selector is
   treated as "all pods"). Not done: reqwest 0.13 (0.12 kept to limit
   churn); the musl cross-build was not re-run after the upgrade.
+- 2026-10-02 — L14 landed: `diff <before> <after>` (text/json, `--fail-on`
+  for regressions only), `diagnose --watch N [--watch-count M]`, and
+  `-o prometheus` (zero-filled per-rule gauge plus per-severity totals).
+  120 tests. `--watch` against a live cluster re-collects everything each
+  round and was only exercised against a snapshot file; the Prometheus
+  output was checked for shape, not scraped by a real Prometheus.

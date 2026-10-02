@@ -6,6 +6,7 @@
 
 pub mod analysis;
 pub mod commands;
+pub mod diff;
 pub mod errors;
 pub mod mcp;
 pub mod model;
