@@ -66,6 +66,8 @@ pub const RULES: &[Rule] = &[
         "A from/to selector matches no pod, so the rule allows nothing."),
     rule("POL-004", "policy", Warning, "NetworkPolicy references an undefined named port",
         "A rule allows a named port that no relevant pod declares."),
+    rule("POL-005", "policy", Info, "CNI-native policies are present but not evaluated",
+        "CiliumNetworkPolicy or Calico policy objects exist; reachability verdicts do not account for them."),
     rule("SVC-001", "service", Warning, "Service selector matches no pods",
         "No running pod in the namespace carries the Service's selector labels."),
     rule("SVC-002", "service", Error, "Service has no ready endpoints",

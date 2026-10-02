@@ -41,6 +41,7 @@ const NETWORK_CONFIG_MAPS: &[&str] = &[
 ];
 
 pub const GATEWAY_GROUP: &str = "gateway.networking.k8s.io";
+pub const ADMIN_POLICY_GROUP: &str = "policy.networking.k8s.io";
 
 const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
 const REDACTED: &str = "<redacted>";
@@ -70,6 +71,14 @@ pub struct ClusterSnapshot {
     pub gateways: Vec<DynamicObject>,
     pub http_routes: Vec<DynamicObject>,
     pub reference_grants: Vec<DynamicObject>,
+    /// `policy.networking.k8s.io` AdminNetworkPolicy (cluster-scoped).
+    pub admin_network_policies: Vec<DynamicObject>,
+    /// BaselineAdminNetworkPolicy (cluster-scoped singleton named `default`).
+    pub baseline_admin_network_policies: Vec<DynamicObject>,
+    /// CNI-native policies (CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy,
+    /// Calico NetworkPolicy / GlobalNetworkPolicy). Collected so verdicts can
+    /// say they exist; their semantics are not evaluated.
+    pub cni_policies: Vec<DynamicObject>,
     /// Always cluster-wide (falls back to `kube-system`): CNI agents live here.
     pub daemon_sets: Vec<DaemonSet>,
     /// `kube-system` only: CoreDNS and friends.
@@ -175,6 +184,64 @@ impl ClusterSnapshot {
         snap.gateways = take(gateways, &mut errors);
         snap.http_routes = take(http_routes, &mut errors);
         snap.reference_grants = take(reference_grants, &mut errors);
+
+        // Cluster-scoped policy tiers and CNI-native policies. These always
+        // list cluster-wide: they can affect pods in any namespace.
+        let (anp, banp, cnp, ccnp, calico_np, calico_gnp) = tokio::join!(
+            list_dynamic(
+                client,
+                None,
+                ADMIN_POLICY_GROUP,
+                "v1alpha1",
+                "AdminNetworkPolicy",
+                "adminnetworkpolicies"
+            ),
+            list_dynamic(
+                client,
+                None,
+                ADMIN_POLICY_GROUP,
+                "v1alpha1",
+                "BaselineAdminNetworkPolicy",
+                "baselineadminnetworkpolicies"
+            ),
+            list_dynamic(
+                client,
+                None,
+                "cilium.io",
+                "v2",
+                "CiliumNetworkPolicy",
+                "ciliumnetworkpolicies"
+            ),
+            list_dynamic(
+                client,
+                None,
+                "cilium.io",
+                "v2",
+                "CiliumClusterwideNetworkPolicy",
+                "ciliumclusterwidenetworkpolicies"
+            ),
+            list_dynamic(
+                client,
+                None,
+                "crd.projectcalico.org",
+                "v1",
+                "NetworkPolicy",
+                "networkpolicies.crd.projectcalico.org"
+            ),
+            list_dynamic(
+                client,
+                None,
+                "crd.projectcalico.org",
+                "v1",
+                "GlobalNetworkPolicy",
+                "globalnetworkpolicies"
+            ),
+        );
+        snap.admin_network_policies = take(anp, &mut errors);
+        snap.baseline_admin_network_policies = take(banp, &mut errors);
+        for list in [cnp, ccnp, calico_np, calico_gnp] {
+            snap.cni_policies.extend(take(list, &mut errors));
+        }
 
         // Cluster-wide DaemonSet list may be forbidden; kube-system is enough
         // for the mainstream CNIs.
@@ -304,6 +371,9 @@ impl ClusterSnapshot {
             .iter_mut()
             .chain(&mut self.http_routes)
             .chain(&mut self.reference_grants)
+            .chain(&mut self.admin_network_policies)
+            .chain(&mut self.baseline_admin_network_policies)
+            .chain(&mut self.cni_policies)
         {
             scrub_meta(&mut o.metadata);
         }
@@ -394,16 +464,30 @@ async fn list_dynamic(
     group: &str,
     version: &str,
     kind: &str,
-    plural: &'static str,
+    // Plural resource name; may be qualified (`plural.group`) to keep the
+    // collection-error key unambiguous when two groups share a plural.
+    label: &'static str,
 ) -> Result<Vec<DynamicObject>, (&'static str, NetInspectError)> {
+    let plural = label.split('.').next().unwrap_or(label);
     let resource =
         ApiResource::from_gvk_with_plural(&GroupVersionKind::gvk(group, version, kind), plural);
     let api: Api<DynamicObject> = match namespace {
         Some(ns) => Api::namespaced_with(client.clone(), ns, &resource),
         None => Api::all_with(client.clone(), &resource),
     };
+    let plural = label;
+    let stamp = |mut items: Vec<DynamicObject>| {
+        // List items do not always carry their own kind; analyzers need it.
+        for item in &mut items {
+            item.types.get_or_insert_with(|| kube::core::TypeMeta {
+                api_version: format!("{group}/{version}"),
+                kind: kind.to_string(),
+            });
+        }
+        items
+    };
     match tokio::time::timeout(LIST_TIMEOUT, api.list(&ListParams::default())).await {
-        Ok(Ok(l)) => Ok(l.items),
+        Ok(Ok(l)) => Ok(stamp(l.items)),
         Ok(Err(kube::Error::Api(e))) if e.code == 404 => Ok(Vec::new()),
         Ok(Err(e)) => Err((plural, NetInspectError::from(e))),
         Err(_) => Err((

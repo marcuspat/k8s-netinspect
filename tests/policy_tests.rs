@@ -556,3 +556,313 @@ fn verdict_serializes_with_stable_field_names() {
     assert_eq!(v["ingress"]["decision"], "denied");
     assert_eq!(v["ingress"]["isolating"][0], "shop/default-deny");
 }
+
+// ---- AdminNetworkPolicy / BaselineAdminNetworkPolicy tiers ----
+
+use kube::core::DynamicObject;
+
+fn anp(name: &str, priority: i64, spec: Value) -> DynamicObject {
+    let mut spec = spec;
+    spec["priority"] = json!(priority);
+    serde_json::from_value(json!({
+        "apiVersion": "policy.networking.k8s.io/v1alpha1",
+        "kind": "AdminNetworkPolicy",
+        "metadata": {"name": name},
+        "spec": spec
+    }))
+    .unwrap()
+}
+
+fn banp(spec: Value) -> DynamicObject {
+    serde_json::from_value(json!({
+        "apiVersion": "policy.networking.k8s.io/v1alpha1",
+        "kind": "BaselineAdminNetworkPolicy",
+        "metadata": {"name": "default"},
+        "spec": spec
+    }))
+    .unwrap()
+}
+
+fn shop_subject() -> Value {
+    json!({"namespaces": {"matchLabels": {"kubernetes.io/metadata.name": "shop"}}})
+}
+
+#[test]
+fn admin_deny_overrides_a_network_policy_allow() {
+    let mut snap = cluster(vec![policy(
+        "shop",
+        "db-allow-all",
+        json!({"podSelector": {"matchLabels": {"app": "db"}}, "ingress": [{}]}),
+    )]);
+    assert!(check(&snap, PROM, DB, 5432).allowed);
+
+    snap.admin_network_policies.push(anp(
+        "no-ops-into-shop",
+        10,
+        json!({
+            "subject": shop_subject(),
+            "ingress": [{
+                "action": "Deny",
+                "from": [{"namespaces": {"matchLabels": {"team": "platform"}}}]
+            }]
+        }),
+    ));
+    let v = check(&snap, PROM, DB, 5432);
+    assert!(!v.allowed);
+    assert_eq!(v.ingress.decision, Decision::Denied);
+    assert_eq!(
+        v.ingress.decided_by.as_deref(),
+        Some("AdminNetworkPolicy 'no-ops-into-shop' ingress rule #1")
+    );
+    // Peers the rule does not name still go through NetworkPolicy.
+    let v = check(&snap, API, DB, 5432);
+    assert!(v.allowed);
+    assert_eq!(v.ingress.decided_by, None);
+    assert_eq!(v.ingress.allowing, vec!["shop/db-allow-all"]);
+}
+
+#[test]
+fn admin_allow_bypasses_a_default_deny_network_policy() {
+    let mut snap = cluster(vec![policy(
+        "shop",
+        "default-deny",
+        json!({"podSelector": {}, "policyTypes": ["Ingress"]}),
+    )]);
+    snap.admin_network_policies.push(anp(
+        "monitoring-everywhere",
+        5,
+        json!({
+            "subject": {"namespaces": {}},
+            "ingress": [{
+                "action": "Allow",
+                "from": [{"pods": {
+                    "namespaceSelector": {"matchLabels": {"team": "platform"}},
+                    "podSelector": {"matchLabels": {"app": "prometheus"}}
+                }}],
+                "ports": [{"portNumber": {"protocol": "TCP", "port": 8080}},
+                          {"portRange": {"protocol": "TCP", "start": 9100, "end": 9200}},
+                          {"namedPort": "dns"}]
+            }]
+        }),
+    ));
+    assert!(check(&snap, PROM, API, 8080).allowed);
+    assert!(check(&snap, PROM, API, 9150).allowed, "portRange");
+    assert!(
+        check_proto(&snap, PROM, API, 53, Protocol::Udp).allowed,
+        "namedPort on the destination"
+    );
+    assert!(
+        !check(&snap, PROM, API, 5432).allowed,
+        "port not listed: falls to NetworkPolicy deny"
+    );
+    assert!(!check(&snap, WEB, API, 8080).allowed, "peer not listed");
+}
+
+#[test]
+fn priority_orders_admin_policies_and_pass_delegates_to_network_policy() {
+    let deny_all = |name: &str, prio: i64| {
+        anp(
+            name,
+            prio,
+            json!({"subject": shop_subject(),
+                   "ingress": [{"action": "Deny", "from": [{"namespaces": {}}]}]}),
+        )
+    };
+    let allow_web = |prio: i64| {
+        anp(
+            "allow-web",
+            prio,
+            json!({"subject": shop_subject(),
+                   "ingress": [{"action": "Allow",
+                                "from": [{"pods": {"namespaceSelector": {}, "podSelector": {"matchLabels": {"app": "web"}}}}]}]}),
+        )
+    };
+
+    // Lower number wins, regardless of list order.
+    let mut snap = cluster(vec![]);
+    snap.admin_network_policies = vec![deny_all("deny", 50), allow_web(10)];
+    assert!(check(&snap, WEB, DB, 5432).allowed);
+    assert!(!check(&snap, API, DB, 5432).allowed);
+    snap.admin_network_policies = vec![allow_web(50), deny_all("deny", 10)];
+    assert!(!check(&snap, WEB, DB, 5432).allowed);
+
+    // Pass stops ANP evaluation — the later Deny is never reached — and the
+    // decision goes to NetworkPolicy.
+    let mut snap = cluster(vec![policy(
+        "shop",
+        "db-from-api",
+        json!({"podSelector": {"matchLabels": {"app": "db"}},
+               "ingress": [{"from": [{"podSelector": {"matchLabels": {"app": "api"}}}]}]}),
+    )]);
+    snap.admin_network_policies = vec![
+        anp(
+            "delegate-shop",
+            10,
+            json!({"subject": shop_subject(),
+                   "ingress": [{"action": "Pass", "from": [{"namespaces": {}}]}]}),
+        ),
+        deny_all("deny", 20),
+    ];
+    assert!(check(&snap, API, DB, 5432).allowed);
+    let v = check(&snap, WEB, DB, 5432);
+    assert!(!v.allowed);
+    assert_eq!(v.ingress.decided_by, None, "NetworkPolicy made the call");
+    assert_eq!(v.ingress.isolating, vec!["shop/db-from-api"]);
+
+    // Rule order inside one policy: first match wins.
+    let mut snap = cluster(vec![]);
+    snap.admin_network_policies = vec![anp(
+        "ordered",
+        1,
+        json!({"subject": shop_subject(), "ingress": [
+            {"action": "Allow", "from": [{"pods": {"namespaceSelector": {}, "podSelector": {"matchLabels": {"app": "api"}}}}]},
+            {"action": "Deny", "from": [{"namespaces": {}}]}
+        ]}),
+    )];
+    assert!(check(&snap, API, DB, 1).allowed);
+    let v = check(&snap, WEB, DB, 1);
+    assert_eq!(
+        v.ingress.decided_by.as_deref(),
+        Some("AdminNetworkPolicy 'ordered' ingress rule #2")
+    );
+}
+
+#[test]
+fn baseline_applies_only_when_no_network_policy_isolates() {
+    let mut snap = cluster(vec![]);
+    snap.baseline_admin_network_policies.push(banp(json!({
+        "subject": {"namespaces": {}},
+        "ingress": [{"action": "Deny", "from": [{"namespaces": {}}]}]
+    })));
+    let v = check(&snap, WEB, DB, 5432);
+    assert!(!v.allowed, "cluster default-deny via the baseline");
+    assert_eq!(
+        v.ingress.decided_by.as_deref(),
+        Some("BaselineAdminNetworkPolicy 'default' ingress rule #1")
+    );
+
+    // Once a NetworkPolicy selects db, the baseline no longer applies to it.
+    snap.network_policies.push(policy(
+        "shop",
+        "db-from-web",
+        json!({"podSelector": {"matchLabels": {"app": "db"}},
+               "ingress": [{"from": [{"podSelector": {"matchLabels": {"app": "web"}}}]}]}),
+    ));
+    let v = check(&snap, WEB, DB, 5432);
+    assert!(v.allowed);
+    assert_eq!(v.ingress.decided_by, None);
+    assert!(
+        !check(&snap, WEB, API, 8080).allowed,
+        "api is still under the baseline"
+    );
+}
+
+#[test]
+fn admin_egress_supports_networks_peers() {
+    let mut snap = cluster(vec![]);
+    snap.admin_network_policies.push(anp(
+        "block-metadata",
+        1,
+        json!({"subject": shop_subject(),
+               "egress": [{"action": "Deny", "to": [{"networks": ["169.254.169.254/32"]}]}]}),
+    ));
+    let to = |ip: &str| {
+        evaluate(
+            &snap,
+            &Flow {
+                src: Endpoint::Pod(find(&snap, "shop", "web")),
+                dst: Endpoint::Ip(ip.parse().unwrap()),
+                port: 80,
+                protocol: Protocol::Tcp,
+            },
+        )
+    };
+    let v = to("169.254.169.254");
+    assert!(!v.allowed);
+    assert_eq!(
+        v.egress.decided_by.as_deref(),
+        Some("AdminNetworkPolicy 'block-metadata' egress rule #1")
+    );
+    assert!(to("93.184.216.34").allowed);
+    // Other namespaces are not subjects.
+    assert!(
+        evaluate(
+            &snap,
+            &Flow {
+                src: Endpoint::Pod(find(&snap, "ops", "prom")),
+                dst: Endpoint::Ip("169.254.169.254".parse().unwrap()),
+                port: 80,
+                protocol: Protocol::Tcp,
+            }
+        )
+        .allowed
+    );
+}
+
+#[test]
+fn cni_native_policies_make_the_verdict_incomplete() {
+    let mut snap = cluster(vec![]);
+    let cnp: DynamicObject = serde_json::from_value(json!({
+        "apiVersion": "cilium.io/v2", "kind": "CiliumNetworkPolicy",
+        "metadata": {"name": "l7-rules", "namespace": "shop"},
+        "spec": {"endpointSelector": {"matchLabels": {"app": "api"}}}
+    }))
+    .unwrap();
+    let gnp: DynamicObject = serde_json::from_value(json!({
+        "apiVersion": "crd.projectcalico.org/v1", "kind": "GlobalNetworkPolicy",
+        "metadata": {"name": "deny-egress"},
+        "spec": {"selector": "all()"}
+    }))
+    .unwrap();
+
+    snap.cni_policies.push(cnp);
+    let v = check(&snap, WEB, DB, 5432);
+    assert!(v.allowed && !v.complete);
+    assert!(
+        v.caveats
+            .iter()
+            .any(|c| c.contains("CiliumNetworkPolicy shop/l7-rules")),
+        "{:?}",
+        v.caveats
+    );
+    // A flow that touches no namespace with native policies stays complete.
+    assert!(check(&snap, PROM, STRANGER, 80).complete);
+
+    // Cluster-wide native policies taint every verdict.
+    snap.cni_policies.push(gnp);
+    let v = check(&snap, PROM, STRANGER, 80);
+    assert!(!v.complete);
+    assert!(v
+        .caveats
+        .iter()
+        .any(|c| c.contains("GlobalNetworkPolicy deny-egress")));
+
+    // And diagnose says so once.
+    let r = k8s_netinspect::analysis::analyze(&snap);
+    let f = r
+        .findings
+        .iter()
+        .find(|f| f.id == "POL-005")
+        .expect("POL-005");
+    assert!(
+        f.detail
+            .contains("1 CiliumNetworkPolicy, 1 GlobalNetworkPolicy"),
+        "{}",
+        f.detail
+    );
+}
+
+#[test]
+fn forbidden_admin_policies_make_the_verdict_incomplete() {
+    let mut snap = cluster(vec![]);
+    snap.collection_errors.push(CollectionError {
+        resource: "adminnetworkpolicies".into(),
+        message: "forbidden".into(),
+    });
+    let v = check(&snap, WEB, DB, 5432);
+    assert!(v.allowed && !v.complete);
+    assert!(v
+        .caveats
+        .iter()
+        .any(|c| c.contains("adminnetworkpolicies could not be listed")));
+}

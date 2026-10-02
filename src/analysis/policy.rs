@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 
+use super::policy_admin as admin;
 use crate::snapshot::ClusterSnapshot;
 
 /// Label every namespace carries since Kubernetes 1.22; synthesized when the
@@ -92,6 +93,10 @@ pub struct DirectionVerdict {
     pub isolating: Vec<String>,
     /// Subset of `isolating` whose rules allow the flow.
     pub allowing: Vec<String>,
+    /// Set when an AdminNetworkPolicy or BaselineAdminNetworkPolicy rule
+    /// decided this direction instead of NetworkPolicy.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub decided_by: Option<String>,
 }
 
 impl DirectionVerdict {
@@ -100,6 +105,7 @@ impl DirectionVerdict {
             decision: Decision::NotApplicable,
             isolating: Vec::new(),
             allowing: Vec::new(),
+            decided_by: None,
         }
     }
 }
@@ -152,6 +158,23 @@ pub fn evaluate(snapshot: &ClusterSnapshot, flow: &Flow<'_>) -> Verdict {
                  not collected."
             ));
         }
+    }
+
+    for resource in ["adminnetworkpolicies", "baselineadminnetworkpolicies"] {
+        if snapshot.is_unknown(resource) {
+            complete = false;
+            caveats.push(format!(
+                "{resource} could not be listed; the verdict assumes none exist."
+            ));
+        }
+    }
+    let native = admin::cni_policies_in_play(snapshot, &[flow.src, flow.dst]);
+    if !native.is_empty() {
+        complete = false;
+        caveats.push(format!(
+            "CNI-native policies may also apply and are not evaluated: {}.",
+            native.join(", ")
+        ));
     }
 
     // A pod talking to itself is never subject to policy.
@@ -220,7 +243,49 @@ pub fn evaluate(snapshot: &ClusterSnapshot, flow: &Flow<'_>) -> Verdict {
     }
 }
 
+/// One direction across all tiers, in the order the dataplane applies them:
+/// AdminNetworkPolicy (by priority) → NetworkPolicy → BaselineAdminNetworkPolicy.
 fn evaluate_direction(
+    snapshot: &ClusterSnapshot,
+    subject: &Pod,
+    peer: Endpoint<'_>,
+    flow: &Flow<'_>,
+    direction: Direction,
+    used_ip_block_for_pod: &mut bool,
+) -> DirectionVerdict {
+    let decided = |action: admin::Action, by: String| DirectionVerdict {
+        decision: match action {
+            admin::Action::Deny => Decision::Denied,
+            _ => Decision::Allowed,
+        },
+        isolating: Vec::new(),
+        allowing: Vec::new(),
+        decided_by: Some(by),
+    };
+
+    match admin::admin_tier(snapshot, subject, peer, flow, direction) {
+        Some((admin::Action::Pass, _)) | None => {}
+        Some((action, by)) => return decided(action, by),
+    }
+
+    let verdict = network_policy_direction(
+        snapshot,
+        subject,
+        peer,
+        flow,
+        direction,
+        used_ip_block_for_pod,
+    );
+    // The baseline tier only applies to traffic no NetworkPolicy isolates.
+    if verdict.decision == Decision::NotIsolated {
+        if let Some((action, by)) = admin::baseline_tier(snapshot, subject, peer, flow, direction) {
+            return decided(action, by);
+        }
+    }
+    verdict
+}
+
+fn network_policy_direction(
     snapshot: &ClusterSnapshot,
     subject: &Pod,
     peer: Endpoint<'_>,
@@ -333,6 +398,7 @@ fn evaluate_direction(
         decision,
         isolating,
         allowing,
+        decided_by: None,
     }
 }
 
@@ -510,7 +576,7 @@ pub(crate) fn ns_of(pod: &Pod) -> &str {
     pod.metadata.namespace.as_deref().unwrap_or("default")
 }
 
-fn same_pod(a: &Pod, b: &Pod) -> bool {
+pub(crate) fn same_pod(a: &Pod, b: &Pod) -> bool {
     ns_of(a) == ns_of(b) && a.metadata.name.is_some() && a.metadata.name == b.metadata.name
 }
 

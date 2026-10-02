@@ -81,7 +81,7 @@ Standing constraints:
   Gateway API via the dynamic client: HTTPRoute `parentRefs`/`backendRefs`
   that do not resolve, cross-namespace refs without a ReferenceGrant,
   Gateways not Programmed.
-- [ ] **L9 — CNI-native and admin policies.** Collect CiliumNetworkPolicy /
+- [x] **L9 — CNI-native and admin policies.** Collect CiliumNetworkPolicy /
   CiliumClusterwideNetworkPolicy, Calico NetworkPolicy / GlobalNetworkPolicy,
   and AdminNetworkPolicy / BaselineAdminNetworkPolicy via the dynamic client.
   Evaluate ANP/BANP tiers in the engine; for CNI-native policies that select
@@ -158,3 +158,12 @@ Standing constraints:
   HTTPRoute is analysed (no GRPCRoute / TLSRoute), and Gateway listener
   `allowedRoutes` is not evaluated — GW-005 relays the controller's own
   verdict instead.
+- 2026-10-02 — L9 landed: AdminNetworkPolicy / BaselineAdminNetworkPolicy
+  (v1alpha1) evaluated as tiers around NetworkPolicy (priority, rule order,
+  Allow / Deny / Pass, `networks` egress peers); Cilium and Calico policies
+  collected and reported (`POL-005`, incomplete verdicts) but not
+  interpreted. 90 tests, 43 rules. Limits: ANP `nodes` peers and
+  `sameLabels` are not matched; CNI-native detection is by namespace, not by
+  the policy's own selector, so it over-reports rather than under-reports;
+  ANP semantics follow the v1alpha1 spec as I understand it and were not
+  checked against a conformance suite.

@@ -13,7 +13,7 @@ A minimal Kubernetes network inspection tool for diagnosing CNI and pod connecti
 
 - CNI detection from the agent DaemonSet — Cilium, Calico, Canal, Flannel, Weave Net, AWS VPC CNI, Azure CNI, GKE Dataplane V2, Antrea, OVN-Kubernetes, kube-router, kindnet, plus Multus / Istio CNI / Linkerd CNI — with version and rollout health; falls back to node annotations (k3s embedded flannel)
 - Findings with stable rule ids, severity, evidence and a suggested fix (CNI agent not ready, competing CNIs, node `NetworkUnavailable` / NotReady)
-- `can-reach`: answers "would NetworkPolicy let A talk to B on this port?" and names the policy that blocks it — evaluated from the policy objects, no traffic sent
+- `can-reach`: answers "would policy let A talk to B on this port?" and names the policy that blocks it — NetworkPolicy plus AdminNetworkPolicy / BaselineAdminNetworkPolicy tiers, evaluated from the policy objects, no traffic sent; says so when Cilium or Calico policies it cannot interpret are in play
 - NetworkPolicy findings: egress policies that block DNS, policies that select no pods, peers that match nothing, undefined named ports
 - Service findings: selector matches no pods, no ready endpoints, `targetPort` the backing pods do not expose, LoadBalancer without an address, selector-less Service without endpoints
 - DNS findings: CoreDNS down, degraded or scaled to zero; kube-dns Service missing or without ready endpoints; Corefile with no `kubernetes` plugin, no upstream, or a `forward` that points back at CoreDNS; NodeLocal DNSCache agents not ready
@@ -83,7 +83,7 @@ k8s-netinspect can-reach --from shop/api --to shop/db -p 5432 -o json --from-sna
 
 Exit status: `0` allowed, `6` blocked, anything else is an error (for example `4` when a pod does not exist).
 
-This evaluates `networking.k8s.io/v1` NetworkPolicy only. It does not see CNI-native policies (CiliumNetworkPolicy, Calico GlobalNetworkPolicy), AdminNetworkPolicy, service meshes or cloud firewalls, and it sends no traffic — "allowed" means no NetworkPolicy blocks the flow, not that the connection will succeed.
+This evaluates `networking.k8s.io/v1` NetworkPolicy plus the AdminNetworkPolicy and BaselineAdminNetworkPolicy tiers (`policy.networking.k8s.io/v1alpha1`), in the order the dataplane applies them. CNI-native policies (CiliumNetworkPolicy, CiliumClusterwideNetworkPolicy, Calico NetworkPolicy / GlobalNetworkPolicy) are detected but not interpreted: when one could apply to either endpoint the verdict is marked incomplete and names it. Service meshes and cloud firewalls are invisible to it, and it sends no traffic — "allowed" means no evaluated policy blocks the flow, not that the connection will succeed.
 
 ### Output formats and CI gating
 

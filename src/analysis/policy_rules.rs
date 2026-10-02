@@ -18,6 +18,42 @@ const DNS_NAMESPACE: &str = "kube-system";
 const DNS_LABEL: (&str, &str) = ("k8s-app", "kube-dns");
 
 pub fn analyze(snapshot: &ClusterSnapshot) -> Vec<Finding> {
+    let mut findings = unevaluated_policies(snapshot);
+    findings.extend(network_policy_findings(snapshot));
+    findings
+}
+
+/// POL-005: policies exist that the reachability engine does not interpret.
+fn unevaluated_policies(snapshot: &ClusterSnapshot) -> Vec<Finding> {
+    if snapshot.cni_policies.is_empty() {
+        return Vec::new();
+    }
+    let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
+    for p in &snapshot.cni_policies {
+        *kinds
+            .entry(p.types.as_ref().map_or("Policy", |t| t.kind.as_str()))
+            .or_default() += 1;
+    }
+    let summary: Vec<String> = kinds.iter().map(|(k, n)| format!("{n} {k}")).collect();
+    vec![Finding::new(
+        "POL-005",
+        Severity::Info,
+        "policy",
+        "CNI-native policies are present but not evaluated",
+        format!(
+            "Found {}. These are enforced by the CNI in addition to NetworkPolicy; can-reach \
+             and the policy rules do not interpret them, so a flow reported as allowed may \
+             still be dropped.",
+            summary.join(", ")
+        ),
+    )
+    .remediation(
+        "Treat can-reach verdicts touching the affected namespaces as incomplete, and confirm \
+         with the CNI's own tooling (cilium policy trace / calicoctl).",
+    )]
+}
+
+fn network_policy_findings(snapshot: &ClusterSnapshot) -> Vec<Finding> {
     // Without pods there is nothing to match selectors against; reporting
     // "selects no pods" would be a false positive.
     if snapshot.network_policies.is_empty() || snapshot.is_unknown("pods") {

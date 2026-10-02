@@ -7,6 +7,7 @@ pub mod ingress;
 pub mod node;
 pub mod pod;
 pub mod policy;
+pub mod policy_admin;
 pub mod policy_rules;
 pub mod proxy;
 pub mod service;

@@ -282,6 +282,14 @@ fn render_reach(report: &ReachReport) -> String {
 }
 
 fn describe_direction(d: &DirectionVerdict, dir: &str) -> String {
+    if let Some(by) = &d.decided_by {
+        let word = if d.decision == Decision::Denied {
+            "denied"
+        } else {
+            "allowed"
+        };
+        return format!("{word} by {by}");
+    }
     match d.decision {
         Decision::NotApplicable => "not a pod — NetworkPolicy does not apply to this side".into(),
         Decision::NotIsolated => format!("not isolated — no policy selects this pod for {dir}"),

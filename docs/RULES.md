@@ -22,6 +22,7 @@ Severity is the highest a rule can report; the description notes when it reports
 | `POL-002` | warning | NetworkPolicy selects no pods | The policy's podSelector matches no pod in its namespace, so it has no effect. |
 | `POL-003` | warning | NetworkPolicy peer matches no pods | A from/to selector matches no pod, so the rule allows nothing. |
 | `POL-004` | warning | NetworkPolicy references an undefined named port | A rule allows a named port that no relevant pod declares. |
+| `POL-005` | info | CNI-native policies are present but not evaluated | CiliumNetworkPolicy or Calico policy objects exist; reachability verdicts do not account for them. |
 | `SVC-001` | warning | Service selector matches no pods | No running pod in the namespace carries the Service's selector labels. |
 | `SVC-002` | error | Service has no ready endpoints | Pods match the selector but none is Ready. |
 | `SVC-003` | error | Service targetPort is not exposed by its pods | A named targetPort is missing on the backends (Error if on all, Warning if on some), or a numeric targetPort matches no declared container port (Warning). |
