@@ -1,0 +1,1282 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-02T01:00:00+00:00",
+  "namespace": null,
+  "cluster_version": "v1.30.4",
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-a"
+      },
+      "spec": {
+        "podCIDR": "10.244.0.0/24",
+        "podCIDRs": [
+          "10.244.0.0/24"
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-b"
+      },
+      "spec": {
+        "podCIDR": "10.244.1.0/28",
+        "podCIDRs": [
+          "10.244.1.0/28"
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-c"
+      },
+      "spec": {
+        "podCIDR": "10.244.0.128/25",
+        "podCIDRs": [
+          "10.244.0.128/25"
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    }
+  ],
+  "namespaces": [
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "apps"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "kube-system"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "monitoring"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "kube-flannel"
+      }
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "coredns-5d78c9869d-abcde",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "ports": [
+              {
+                "name": "dns",
+                "containerPort": 53,
+                "protocol": "UDP"
+              },
+              {
+                "name": "dns-tcp",
+                "containerPort": 53
+              }
+            ]
+          }
+        ],
+        "nodeName": "node-a"
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.244.0.2",
+        "podIPs": [
+          {
+            "ip": "10.244.0.2"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "web-1",
+        "namespace": "apps",
+        "labels": {
+          "app": "web"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.0.5",
+        "podIPs": [
+          {
+            "ip": "10.244.0.5"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "web-2",
+        "namespace": "apps",
+        "labels": {
+          "app": "web"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.0.5",
+        "podIPs": [
+          {
+            "ip": "10.244.0.5"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "legacy-1",
+        "namespace": "apps",
+        "labels": {
+          "app": "legacy"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.88.0.4",
+        "podIPs": [
+          {
+            "ip": "10.88.0.4"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "stuck-1",
+        "namespace": "apps",
+        "labels": {
+          "app": "stuck"
+        },
+        "creationTimestamp": "2026-10-02T00:48:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Pending",
+        "startTime": "2026-10-02T00:48:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "imageID": "",
+            "ready": false,
+            "restartCount": 0,
+            "state": {
+              "waiting": {
+                "reason": "ContainerCreating"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "stuck-2",
+        "namespace": "apps",
+        "labels": {
+          "app": "stuck"
+        },
+        "creationTimestamp": "2026-10-02T00:50:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Pending",
+        "startTime": "2026-10-02T00:50:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "imageID": "",
+            "ready": false,
+            "restartCount": 0,
+            "state": {
+              "waiting": {
+                "reason": "ContainerCreating"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "fresh-1",
+        "namespace": "apps",
+        "labels": {
+          "app": "fresh"
+        },
+        "creationTimestamp": "2026-10-02T00:59:40Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Pending",
+        "startTime": "2026-10-02T00:59:40Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "imageID": "",
+            "ready": false,
+            "restartCount": 0,
+            "state": {
+              "waiting": {
+                "reason": "ContainerCreating"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "pulling-1",
+        "namespace": "apps",
+        "labels": {
+          "app": "pulling"
+        },
+        "creationTimestamp": "2026-10-02T00:40:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Pending",
+        "startTime": "2026-10-02T00:40:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False"
+          }
+        ],
+        "podIP": "10.244.0.9",
+        "podIPs": [
+          {
+            "ip": "10.244.0.9"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "imageID": "",
+            "ready": false,
+            "restartCount": 0,
+            "state": {
+              "waiting": {
+                "reason": "ContainerCreating"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "unscheduled-1",
+        "namespace": "apps",
+        "labels": {
+          "app": "unscheduled"
+        },
+        "creationTimestamp": "2026-10-02T00:10:00Z"
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Pending",
+        "startTime": "2026-10-02T00:10:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "node-exporter-a",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "node-exporter"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ],
+        "hostNetwork": true
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "172.18.0.2",
+        "podIPs": [
+          {
+            "ip": "172.18.0.2"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "ebs-csi-a",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "ebs-csi"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-a",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ],
+        "hostNetwork": true
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "172.18.0.2",
+        "podIPs": [
+          {
+            "ip": "172.18.0.2"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "job-done",
+        "namespace": "apps",
+        "labels": {
+          "app": "job"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Succeeded",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "False"
+          }
+        ],
+        "podIP": "10.244.1.14",
+        "podIPs": [
+          {
+            "ip": "10.244.1.14"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-2",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.2",
+        "podIPs": [
+          {
+            "ip": "10.244.1.2"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-3",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.3",
+        "podIPs": [
+          {
+            "ip": "10.244.1.3"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-4",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.4",
+        "podIPs": [
+          {
+            "ip": "10.244.1.4"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-5",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.5",
+        "podIPs": [
+          {
+            "ip": "10.244.1.5"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-6",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.6",
+        "podIPs": [
+          {
+            "ip": "10.244.1.6"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-7",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.7",
+        "podIPs": [
+          {
+            "ip": "10.244.1.7"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-8",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.8",
+        "podIPs": [
+          {
+            "ip": "10.244.1.8"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-9",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.9",
+        "podIPs": [
+          {
+            "ip": "10.244.1.9"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-10",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.10",
+        "podIPs": [
+          {
+            "ip": "10.244.1.10"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-11",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.11",
+        "podIPs": [
+          {
+            "ip": "10.244.1.11"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-12",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.12",
+        "podIPs": [
+          {
+            "ip": "10.244.1.12"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "batch-13",
+        "namespace": "apps",
+        "labels": {
+          "app": "batch"
+        },
+        "creationTimestamp": "2026-10-02T00:00:00Z"
+      },
+      "spec": {
+        "nodeName": "node-b",
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "startTime": "2026-10-02T00:00:00Z",
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ],
+        "podIP": "10.244.1.13",
+        "podIPs": [
+          {
+            "ip": "10.244.1.13"
+          }
+        ]
+      }
+    }
+  ],
+  "services": [
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "kube-dns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "clusterIP": "10.96.0.10",
+        "clusterIPs": [
+          "10.96.0.10"
+        ],
+        "selector": {
+          "k8s-app": "kube-dns"
+        },
+        "ports": [
+          {
+            "name": "dns",
+            "port": 53,
+            "protocol": "UDP",
+            "targetPort": 53
+          },
+          {
+            "name": "dns-tcp",
+            "port": 53,
+            "protocol": "TCP",
+            "targetPort": 53
+          }
+        ]
+      }
+    }
+  ],
+  "endpoint_slices": [
+    {
+      "apiVersion": "discovery.k8s.io/v1",
+      "kind": "EndpointSlice",
+      "addressType": "IPv4",
+      "metadata": {
+        "name": "kube-dns-abcde",
+        "namespace": "kube-system",
+        "labels": {
+          "kubernetes.io/service-name": "kube-dns"
+        }
+      },
+      "endpoints": [
+        {
+          "addresses": [
+            "10.244.0.2"
+          ],
+          "conditions": {
+            "ready": true
+          }
+        }
+      ],
+      "ports": [
+        {
+          "name": "dns",
+          "port": 53,
+          "protocol": "UDP"
+        },
+        {
+          "name": "dns-tcp",
+          "port": 53,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "kube-flannel-ds",
+        "namespace": "kube-flannel"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "app": "flannel"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "flannel"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "kube-flannel",
+                "image": "docker.io/flannel/flannel:v0.25.6"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-proxy"
+        }
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-proxy"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-proxy"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "kube-proxy",
+                "image": "registry.k8s.io/kube-proxy:v1.30.4"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    }
+  ],
+  "deployments": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "replicas": 2,
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-dns"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-dns"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "coredns",
+                "image": "registry.k8s.io/coredns/coredns:v1.11.3"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "replicas": 2,
+        "readyReplicas": 2
+      }
+    }
+  ],
+  "config_maps": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "Corefile": ".:53 {\n    errors\n    health {\n       lameduck 5s\n    }\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n       pods insecure\n       fallthrough in-addr.arpa ip6.arpa\n       ttl 30\n    }\n    prometheus :9153\n    forward . /etc/resolv.conf {\n       max_concurrent 1000\n    }\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "config.conf": "apiVersion: kubeproxy.config.k8s.io/v1alpha1\nkind: KubeProxyConfiguration\nclusterCIDR: 10.0.0.0/16\niptables:\n  masqueradeAll: false\nipvs:\n  scheduler: \"\"\nmode: \"\"\n"
+      }
+    }
+  ]
+}

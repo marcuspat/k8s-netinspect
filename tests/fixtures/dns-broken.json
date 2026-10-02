@@ -1,0 +1,496 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-01T22:00:00+00:00",
+  "namespace": null,
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-a",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-b",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-c",
+        "annotations": {}
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True",
+            "reason": "KubeletReady",
+            "message": ""
+          },
+          {
+            "type": "NetworkUnavailable",
+            "status": "False",
+            "reason": "RouteCreated",
+            "message": ""
+          }
+        ],
+        "nodeInfo": {
+          "architecture": "amd64",
+          "bootID": "b",
+          "containerRuntimeVersion": "containerd://1.7.20",
+          "kernelVersion": "6.8.0",
+          "kubeProxyVersion": "v1.30.4",
+          "kubeletVersion": "v1.30.4",
+          "machineID": "m",
+          "operatingSystem": "linux",
+          "osImage": "Ubuntu 24.04",
+          "systemUUID": "u"
+        }
+      }
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "cilium",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "cilium"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "cilium"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "cilium",
+                "image": "quay.io/cilium/cilium:v1.16.1@sha256:0b4a3ab41a4760d86b7fc945b8783747ba27f29dac30dd434d94f2c9e3679f39"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "cilium-envoy",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "cilium-envoy"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "cilium-envoy"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "cilium-envoy",
+                "image": "quay.io/cilium/cilium-envoy:v1.29.7"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "node-exporter",
+        "namespace": "monitoring"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "node-exporter"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "node-exporter"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "node-exporter",
+                "image": "quay.io/prometheus/node-exporter:v1.8.2"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 3
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "node-local-dns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "node-local-dns"
+        }
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "node-local-dns"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "node-local-dns"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "node-cache",
+                "image": "registry.k8s.io/dns/k8s-dns-node-cache:1.23.1"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 3,
+        "desiredNumberScheduled": 3,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "web",
+        "namespace": "default",
+        "labels": {
+          "app": "web"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "nginx:1.27"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.1.10"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "api",
+        "namespace": "default",
+        "labels": {
+          "app": "api"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "nginx:1.27"
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.2.11"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "coredns-5d78c9869d-abcde",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "coredns",
+            "image": "registry.k8s.io/coredns/coredns:v1.11.3",
+            "ports": [
+              {
+                "name": "dns",
+                "containerPort": 53,
+                "protocol": "UDP"
+              },
+              {
+                "name": "dns-tcp",
+                "containerPort": 53,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.0.2",
+        "podIPs": [
+          {
+            "ip": "10.0.0.2"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    }
+  ],
+  "deployments": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "replicas": 2,
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-dns"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-dns"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "coredns",
+                "image": "registry.k8s.io/coredns/coredns:v1.11.3"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "replicas": 2,
+        "readyReplicas": 1
+      }
+    }
+  ],
+  "services": [
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "kube-dns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "clusterIP": "10.96.0.10",
+        "clusterIPs": [
+          "10.96.0.10"
+        ],
+        "selector": {
+          "k8s-app": "kube-dns"
+        },
+        "ports": [
+          {
+            "name": "dns",
+            "port": 53,
+            "protocol": "UDP",
+            "targetPort": 53
+          },
+          {
+            "name": "dns-tcp",
+            "port": 53,
+            "protocol": "TCP",
+            "targetPort": 53
+          }
+        ]
+      }
+    }
+  ],
+  "endpoint_slices": [
+    {
+      "apiVersion": "discovery.k8s.io/v1",
+      "kind": "EndpointSlice",
+      "addressType": "IPv4",
+      "metadata": {
+        "name": "kube-dns-abcde",
+        "namespace": "kube-system",
+        "labels": {
+          "kubernetes.io/service-name": "kube-dns"
+        }
+      },
+      "endpoints": [
+        {
+          "addresses": [
+            "10.0.0.2"
+          ],
+          "conditions": {
+            "ready": true
+          }
+        }
+      ],
+      "ports": [
+        {
+          "name": "dns",
+          "port": 53,
+          "protocol": "UDP"
+        },
+        {
+          "name": "dns-tcp",
+          "port": 53,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "config_maps": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "Corefile": ".:53 {\n    errors\n    health\n    ready\n    prometheus :9153\n    forward . 10.96.0.10 127.0.0.53:53\n    cache 30\n    loop\n}\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "cilium-config",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "kube-proxy-replacement": "true",
+        "routing-mode": "tunnel"
+      }
+    }
+  ],
+  "cluster_version": "v1.30.4"
+}
