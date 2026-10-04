@@ -1,0 +1,1163 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-10-02T01:50:00+00:00",
+  "namespace": null,
+  "cluster_version": "v1.30.4",
+  "nodes": [
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-a"
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Node",
+      "metadata": {
+        "name": "node-b"
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    }
+  ],
+  "namespaces": [
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "shop",
+        "labels": {
+          "kubernetes.io/metadata.name": "shop"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "infra",
+        "labels": {
+          "kubernetes.io/metadata.name": "infra"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "payments",
+        "labels": {
+          "kubernetes.io/metadata.name": "payments"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "billing",
+        "labels": {
+          "kubernetes.io/metadata.name": "billing"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Namespace",
+      "metadata": {
+        "name": "kube-system",
+        "labels": {
+          "kubernetes.io/metadata.name": "kube-system"
+        }
+      }
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "coredns-5d78c9869d-abcde",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "ports": [
+              {
+                "name": "dns",
+                "containerPort": 53,
+                "protocol": "UDP"
+              },
+              {
+                "name": "dns-tcp",
+                "containerPort": 53
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.0.2",
+        "podIPs": [
+          {
+            "ip": "10.0.0.2"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "web",
+        "namespace": "shop",
+        "labels": {
+          "app": "web"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8080
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.1.10",
+        "podIPs": [
+          {
+            "ip": "10.0.1.10"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "api",
+        "namespace": "shop",
+        "labels": {
+          "app": "api"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8080
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.1.11",
+        "podIPs": [
+          {
+            "ip": "10.0.1.11"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "ledger",
+        "namespace": "payments",
+        "labels": {
+          "app": "ledger"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8443
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.4.10",
+        "podIPs": [
+          {
+            "ip": "10.0.4.10"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "name": "invoices",
+        "namespace": "billing",
+        "labels": {
+          "app": "invoices"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "app",
+            "image": "app:1",
+            "ports": [
+              {
+                "name": "http",
+                "containerPort": 8080
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "phase": "Running",
+        "podIP": "10.0.5.10",
+        "podIPs": [
+          {
+            "ip": "10.0.5.10"
+          }
+        ],
+        "conditions": [
+          {
+            "type": "Ready",
+            "status": "True"
+          }
+        ]
+      }
+    }
+  ],
+  "services": [
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "kube-dns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "clusterIP": "10.96.0.10",
+        "clusterIPs": [
+          "10.96.0.10"
+        ],
+        "selector": {
+          "k8s-app": "kube-dns"
+        },
+        "ports": [
+          {
+            "name": "dns",
+            "port": 53,
+            "protocol": "UDP",
+            "targetPort": 53
+          },
+          {
+            "name": "dns-tcp",
+            "port": 53,
+            "protocol": "TCP",
+            "targetPort": 53
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "web",
+        "namespace": "shop"
+      },
+      "spec": {
+        "selector": {
+          "app": "web"
+        },
+        "ports": [
+          {
+            "name": "http",
+            "port": 80,
+            "targetPort": "http"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "api",
+        "namespace": "shop"
+      },
+      "spec": {
+        "selector": {
+          "app": "api"
+        },
+        "ports": [
+          {
+            "port": 8080,
+            "targetPort": 8080
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "ledger",
+        "namespace": "payments"
+      },
+      "spec": {
+        "selector": {
+          "app": "ledger"
+        },
+        "ports": [
+          {
+            "port": 443,
+            "targetPort": 8443
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "invoices",
+        "namespace": "billing"
+      },
+      "spec": {
+        "selector": {
+          "app": "invoices"
+        },
+        "ports": [
+          {
+            "port": 80,
+            "targetPort": 8080
+          }
+        ]
+      }
+    }
+  ],
+  "endpoint_slices": [
+    {
+      "apiVersion": "discovery.k8s.io/v1",
+      "kind": "EndpointSlice",
+      "addressType": "IPv4",
+      "metadata": {
+        "name": "kube-dns-abcde",
+        "namespace": "kube-system",
+        "labels": {
+          "kubernetes.io/service-name": "kube-dns"
+        }
+      },
+      "endpoints": [
+        {
+          "addresses": [
+            "10.0.0.2"
+          ],
+          "conditions": {
+            "ready": true
+          }
+        }
+      ],
+      "ports": [
+        {
+          "name": "dns",
+          "port": 53,
+          "protocol": "UDP"
+        },
+        {
+          "name": "dns-tcp",
+          "port": 53,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ],
+  "daemon_sets": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "calico-node",
+        "namespace": "kube-system"
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "calico-node"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "calico-node"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "calico-node",
+                "image": "docker.io/calico/node:v3.28.0"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "DaemonSet",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-proxy"
+        }
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-proxy"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-proxy"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "kube-proxy",
+                "image": "registry.k8s.io/kube-proxy:v1.30.4"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "currentNumberScheduled": 2,
+        "desiredNumberScheduled": 2,
+        "numberMisscheduled": 0,
+        "numberReady": 2
+      }
+    }
+  ],
+  "deployments": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system",
+        "labels": {
+          "k8s-app": "kube-dns"
+        }
+      },
+      "spec": {
+        "replicas": 2,
+        "selector": {
+          "matchLabels": {
+            "k8s-app": "kube-dns"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "k8s-app": "kube-dns"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "coredns",
+                "image": "registry.k8s.io/coredns/coredns:v1.11.3"
+              }
+            ]
+          }
+        }
+      },
+      "status": {
+        "replicas": 2,
+        "readyReplicas": 2
+      }
+    }
+  ],
+  "config_maps": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "coredns",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "Corefile": ".:53 {\n    errors\n    health {\n       lameduck 5s\n    }\n    ready\n    kubernetes cluster.local in-addr.arpa ip6.arpa {\n       pods insecure\n       fallthrough in-addr.arpa ip6.arpa\n       ttl 30\n    }\n    prometheus :9153\n    forward . /etc/resolv.conf {\n       max_concurrent 1000\n    }\n    cache 30\n    loop\n    reload\n    loadbalance\n}\n"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "kube-proxy",
+        "namespace": "kube-system"
+      },
+      "data": {
+        "config.conf": "apiVersion: kubeproxy.config.k8s.io/v1alpha1\nkind: KubeProxyConfiguration\nclusterCIDR: 10.0.0.0/16\niptables:\n  masqueradeAll: false\nipvs:\n  scheduler: \"\"\nmode: \"\"\n"
+      }
+    }
+  ],
+  "ingress_classes": [
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "IngressClass",
+      "metadata": {
+        "name": "nginx"
+      },
+      "spec": {
+        "controller": "k8s.io/ingress-nginx"
+      }
+    }
+  ],
+  "ingresses": [
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "good",
+        "namespace": "shop"
+      },
+      "spec": {
+        "rules": [
+          {
+            "host": "shop.example.com",
+            "http": {
+              "paths": [
+                {
+                  "path": "/",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "web",
+                      "port": {
+                        "number": 80
+                      }
+                    }
+                  }
+                },
+                {
+                  "path": "/named",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "web",
+                      "port": {
+                        "name": "http"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "ingressClassName": "nginx"
+      },
+      "status": {
+        "loadBalancer": {
+          "ingress": [
+            {
+              "ip": "203.0.113.20"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "legacy",
+        "namespace": "shop",
+        "annotations": {
+          "kubernetes.io/ingress.class": "nginx"
+        }
+      },
+      "spec": {
+        "rules": [
+          {
+            "host": "shop.example.com",
+            "http": {
+              "paths": [
+                {
+                  "path": "/",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "web",
+                      "port": {
+                        "number": 80
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "status": {
+        "loadBalancer": {
+          "ingress": [
+            {
+              "ip": "203.0.113.20"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "missing-svc",
+        "namespace": "shop"
+      },
+      "spec": {
+        "rules": [
+          {
+            "host": "shop.example.com",
+            "http": {
+              "paths": [
+                {
+                  "path": "/cart",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "cart",
+                      "port": {
+                        "number": 80
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "ingressClassName": "nginx",
+        "defaultBackend": {
+          "service": {
+            "name": "web",
+            "port": {
+              "number": 80
+            }
+          }
+        }
+      },
+      "status": {
+        "loadBalancer": {
+          "ingress": [
+            {
+              "ip": "203.0.113.20"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "bad-port",
+        "namespace": "shop"
+      },
+      "spec": {
+        "rules": [
+          {
+            "host": "shop.example.com",
+            "http": {
+              "paths": [
+                {
+                  "path": "/api",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "api",
+                      "port": {
+                        "number": 80
+                      }
+                    }
+                  }
+                },
+                {
+                  "path": "/secure",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "web",
+                      "port": {
+                        "name": "https"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "ingressClassName": "nginx"
+      },
+      "status": {
+        "loadBalancer": {
+          "ingress": [
+            {
+              "ip": "203.0.113.20"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "no-class",
+        "namespace": "shop"
+      },
+      "spec": {
+        "rules": [
+          {
+            "host": "shop.example.com",
+            "http": {
+              "paths": [
+                {
+                  "path": "/",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "web",
+                      "port": {
+                        "number": 80
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "status": {
+        "loadBalancer": {}
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "Ingress",
+      "metadata": {
+        "name": "typo-class",
+        "namespace": "shop"
+      },
+      "spec": {
+        "rules": [
+          {
+            "host": "shop.example.com",
+            "http": {
+              "paths": [
+                {
+                  "path": "/",
+                  "pathType": "Prefix",
+                  "backend": {
+                    "service": {
+                      "name": "web",
+                      "port": {
+                        "number": 80
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "ingressClassName": "ngnix"
+      },
+      "status": {
+        "loadBalancer": {}
+      }
+    }
+  ],
+  "gateways": [
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "Gateway",
+      "metadata": {
+        "name": "public",
+        "namespace": "infra"
+      },
+      "spec": {
+        "gatewayClassName": "cilium",
+        "listeners": [
+          {
+            "name": "http",
+            "port": 80,
+            "protocol": "HTTP"
+          }
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Accepted",
+            "status": "True",
+            "reason": "Accepted",
+            "message": "",
+            "lastTransitionTime": "2026-10-01T00:00:00Z"
+          },
+          {
+            "type": "Programmed",
+            "status": "True",
+            "reason": "Programmed",
+            "message": "",
+            "lastTransitionTime": "2026-10-01T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "Gateway",
+      "metadata": {
+        "name": "internal",
+        "namespace": "infra"
+      },
+      "spec": {
+        "gatewayClassName": "cilium",
+        "listeners": [
+          {
+            "name": "http",
+            "port": 80,
+            "protocol": "HTTP"
+          }
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "type": "Accepted",
+            "status": "True",
+            "reason": "Accepted",
+            "message": "",
+            "lastTransitionTime": "2026-10-01T00:00:00Z"
+          },
+          {
+            "type": "Programmed",
+            "status": "False",
+            "reason": "AddressNotAssigned",
+            "message": "No addresses have been assigned to the Gateway",
+            "lastTransitionTime": "2026-10-01T00:00:00Z"
+          }
+        ]
+      }
+    }
+  ],
+  "http_routes": [
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "web-route",
+        "namespace": "shop"
+      },
+      "spec": {
+        "parentRefs": [
+          {
+            "name": "public",
+            "namespace": "infra"
+          }
+        ],
+        "rules": [
+          {
+            "backendRefs": [
+              {
+                "name": "web",
+                "port": 80
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "parents": [
+          {
+            "parentRef": {
+              "name": "public",
+              "namespace": "infra"
+            },
+            "controllerName": "io.cilium/gateway-controller",
+            "conditions": [
+              {
+                "type": "Accepted",
+                "status": "True",
+                "reason": "Accepted",
+                "message": "",
+                "lastTransitionTime": "2026-10-01T00:00:00Z"
+              },
+              {
+                "type": "ResolvedRefs",
+                "status": "True",
+                "reason": "ResolvedRefs",
+                "message": "",
+                "lastTransitionTime": "2026-10-01T00:00:00Z"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "orphan",
+        "namespace": "shop"
+      },
+      "spec": {
+        "parentRefs": [
+          {
+            "name": "edge",
+            "namespace": "infra"
+          }
+        ],
+        "rules": [
+          {
+            "backendRefs": [
+              {
+                "name": "web",
+                "port": 80
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "bad-backend",
+        "namespace": "shop"
+      },
+      "spec": {
+        "parentRefs": [
+          {
+            "name": "public",
+            "namespace": "infra"
+          }
+        ],
+        "rules": [
+          {
+            "backendRefs": [
+              {
+                "name": "cart",
+                "port": 80
+              },
+              {
+                "name": "api",
+                "port": 9999
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "cross-ns",
+        "namespace": "shop"
+      },
+      "spec": {
+        "parentRefs": [
+          {
+            "name": "public",
+            "namespace": "infra"
+          }
+        ],
+        "rules": [
+          {
+            "backendRefs": [
+              {
+                "name": "ledger",
+                "namespace": "payments",
+                "port": 443
+              },
+              {
+                "name": "invoices",
+                "namespace": "billing",
+                "port": 80
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1",
+      "kind": "HTTPRoute",
+      "metadata": {
+        "name": "rejected",
+        "namespace": "shop"
+      },
+      "spec": {
+        "parentRefs": [
+          {
+            "name": "public",
+            "namespace": "infra"
+          }
+        ],
+        "rules": [
+          {
+            "backendRefs": [
+              {
+                "name": "web",
+                "port": 80
+              }
+            ]
+          }
+        ]
+      },
+      "status": {
+        "parents": [
+          {
+            "parentRef": {
+              "name": "public",
+              "namespace": "infra"
+            },
+            "controllerName": "io.cilium/gateway-controller",
+            "conditions": [
+              {
+                "type": "Accepted",
+                "status": "False",
+                "reason": "NotAllowedByListeners",
+                "message": "No listener allows routes from namespace shop",
+                "lastTransitionTime": "2026-10-01T00:00:00Z"
+              },
+              {
+                "type": "ResolvedRefs",
+                "status": "True",
+                "reason": "ResolvedRefs",
+                "message": "",
+                "lastTransitionTime": "2026-10-01T00:00:00Z"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "reference_grants": [
+    {
+      "apiVersion": "gateway.networking.k8s.io/v1beta1",
+      "kind": "ReferenceGrant",
+      "metadata": {
+        "name": "allow-shop",
+        "namespace": "billing"
+      },
+      "spec": {
+        "from": [
+          {
+            "group": "gateway.networking.k8s.io",
+            "kind": "HTTPRoute",
+            "namespace": "shop"
+          }
+        ],
+        "to": [
+          {
+            "group": "",
+            "kind": "Service"
+          }
+        ]
+      }
+    }
+  ]
+}
