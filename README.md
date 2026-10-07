@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.svg" alt="k8s-netinspect — animated banner" width="100%"></p>
+
 # k8s-netinspect
 
 Kubernetes network diagnostics from the command line: it tells you what is broken and which object is responsible, and it can answer "can A reach B?" from the policy objects without sending a packet.
