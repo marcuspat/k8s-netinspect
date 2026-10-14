@@ -8,7 +8,7 @@ Kubernetes network diagnostics from the command line: it tells you what is broke
 
 *The recording shows v0.1.1; `diagnose` now also lists findings (see the examples below).*
 
-> **Verification status.** Every analysis is tested offline against recorded cluster snapshots (`tests/fixtures/`, 121 tests). The 0.2 live path — collection, `diagnose`, `snapshot`, `can-reach` (with `--suggest` and `--probe`), `--watch`, the RBAC pre-flight and its graceful-skip behaviour — was exercised against a live kind cluster (v1.37, kindnet) on 2026-10-14; that round caught and fixed a probe classification defect (see [CHANGELOG.md](CHANGELOG.md)). Still unverified: clusters with Cilium/Calico/Gateway-API CRDs, a real MCP client, schema-validated SARIF — details in [docs/SOTA_ROADMAP.md](docs/SOTA_ROADMAP.md). `scripts/live-smoke.sh` is a read-only script for running it against your own cluster.
+> **Verification status.** Every analysis is tested offline against recorded cluster snapshots (`tests/fixtures/`, 122 tests). The 0.2 live path — collection, `diagnose`, `snapshot`, `can-reach` (with `--suggest` and `--probe`), `--watch`, the RBAC pre-flight and its graceful-skip behaviour — was exercised against a live kind cluster (v1.37, kindnet) on 2026-10-14; that round caught and fixed a probe classification defect (see [CHANGELOG.md](CHANGELOG.md)). Still unverified: clusters with Cilium/Calico/Gateway-API CRDs, a real MCP client, schema-validated SARIF — details in [docs/SOTA_ROADMAP.md](docs/SOTA_ROADMAP.md). `scripts/live-smoke.sh` is a read-only script for running it against your own cluster.
 
 ## What it checks
 

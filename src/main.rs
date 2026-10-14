@@ -181,7 +181,6 @@ const EXIT_BLOCKED: i32 = 6;
 
 /// Exit status of `can-reach --probe` when the observed result contradicts
 /// the policy verdict.
-const EXIT_PROBE_MISMATCH: i32 = 8;
 
 /// Exit status of `diagnose --fail-on` when a finding meets the threshold.
 const EXIT_FINDINGS: i32 = 7;
@@ -317,15 +316,10 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
                 suggest: *suggest,
             };
             let report = commands::can_reach(source, &query).await?;
-            if let Some(p) = report.probe.as_ref() {
-                if p.observed == probe::Observation::Inconclusive {
-                    // Nothing was observed, so nothing can contradict the
-                    // verdict; a probe that could not run is a runtime error.
-                    process::exit(1);
-                }
-                if !p.agrees {
-                    process::exit(EXIT_PROBE_MISMATCH);
-                }
+            if let Some(code) = report.probe.as_ref().and_then(probe::exit_override) {
+                // 1: the probe produced nothing usable; 8: genuine
+                // contradiction with the verdict; see probe::exit_override.
+                process::exit(code);
             }
             if !report.verdict.allowed {
                 process::exit(EXIT_BLOCKED);

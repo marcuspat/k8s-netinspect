@@ -111,17 +111,25 @@ pub fn container_name(suffix: u64) -> String {
 
 /// Interpret the probe container's exit code and output.
 ///
-/// Exit-code first: `nc` exiting 0 means the handshake completed, and any
-/// other exit means the connect failed. Log text refines *how* it failed
+/// Exit-code first: `nc` exiting 0 means the handshake completed, and an
+/// exit of 1 means the connect failed. Log text refines *how* it failed
 /// when there is any (`refused` vs a drop); busybox `nc` is silent on
 /// `-w` timeouts and writes diagnostics to stderr, which the log read does
-/// not always surface, so an unexplained non-zero exit is
-/// [`Observation::Failed`] — a real failure, flavour unknown — not an
-/// unusable result. Only exits that mean "nc never ran" (`127` command
-/// not found, `126` not executable) stay [`Observation::Inconclusive`].
+/// not always surface, so an unexplained exit 1 is
+/// [`Observation::Failed`] — a real failure, flavour unknown. Every other
+/// exit code means `nc` never completed a connect we can interpret —
+/// command not found (127) or not executable (126), a signal kill such as
+/// 137/143, an OOM, an unexpected usage error — and stays
+/// [`Observation::Inconclusive`]; claiming a failure there could falsely
+/// "confirm" a block the probe never tested.
 pub fn classify(exit_code: i32, logs: &str) -> Observation {
     if exit_code == 0 {
         return Observation::Connected;
+    }
+    if exit_code != 1 {
+        // `nc` did not run to completion; its exit says nothing about the
+        // network. Our argv is fixed, so anything but 0/1 is infrastructure.
+        return Observation::Inconclusive;
     }
     let logs = logs.to_lowercase();
     if logs.contains("refused") {
@@ -131,9 +139,6 @@ pub fn classify(exit_code: i32, logs: &str) -> Observation {
     } else if logs.contains("unreachable") || logs.contains("no route") {
         // ICMP unreachable is still "the packet did not get there".
         Observation::TimedOut
-    } else if exit_code == 126 || exit_code == 127 {
-        // The container ran but `nc` did not: image without `nc`.
-        Observation::Inconclusive
     } else {
         // `nc` ran and the connect failed, with nothing usable about how.
         Observation::Failed
@@ -178,8 +183,9 @@ pub fn compare(predicted_allowed: bool, observed: Observation, container: &str) 
         (false, Observation::Failed) => (
             true,
             "The connect failed, consistent with the policy that blocks this flow. The probe \
-             could not tell a drop from a reset; a reset here would mean the policy is not \
-             being enforced — if you suspect that, re-run with a longer --probe-timeout.",
+             could not tell a drop from a reset (busybox `nc` is silent either way); if you \
+             need that distinction, check the destination's traffic or policy enforcement \
+             directly.",
         ),
         (false, Observation::Connected) => (
             false,
@@ -205,6 +211,26 @@ pub fn compare(predicted_allowed: bool, observed: Observation, container: &str) 
         container: container.to_string(),
     }
 }
+
+/// The process exit a probe report dictates, if any, before the ordinary
+/// blocked/allowed exits apply.
+///
+/// Order matters: an inconclusive probe (which also carries
+/// `agrees == false`) must exit 1 as a runtime error, not 8 — nothing was
+/// observed, so nothing can contradict the verdict. Only a genuine
+/// mismatch (blocked flow, yet connected or refused) exits 8.
+pub fn exit_override(p: &ProbeReport) -> Option<i32> {
+    if p.observed == Observation::Inconclusive {
+        Some(1)
+    } else if !p.agrees {
+        Some(EXIT_PROBE_MISMATCH)
+    } else {
+        None
+    }
+}
+
+/// Exit status for "the observed result contradicts the policy verdict".
+pub const EXIT_PROBE_MISMATCH: i32 = 8;
 
 /// Run the probe in `namespace/pod`. Adds an ephemeral container to that pod
 /// — a change that cannot be undone short of deleting the pod — so callers
@@ -340,6 +366,11 @@ mod tests {
             Observation::Inconclusive
         );
         assert_eq!(classify(126, ""), Observation::Inconclusive);
+        // A killed probe (SIGKILL 137, SIGTERM 143) never completed a
+        // connect; claiming a failure could falsely confirm a block.
+        assert_eq!(classify(137, ""), Observation::Inconclusive);
+        assert_eq!(classify(143, "whatever"), Observation::Inconclusive);
+        assert_eq!(classify(2, ""), Observation::Inconclusive);
         // The live-cluster case that drove this shape: busybox nc times out
         // silently, so a failed connect often carries no log text at all.
         assert_eq!(classify(1, ""), Observation::Failed);
@@ -387,5 +418,36 @@ mod tests {
         assert_eq!(leak["agrees"], false);
         let unknown = serde_json::to_value(compare(true, Observation::Failed, "c")).unwrap();
         assert_eq!(unknown["observed"], "failed");
+    }
+
+    #[test]
+    fn exit_override_orders_inconclusive_over_mismatch() {
+        use Observation::*;
+        // An inconclusive probe also carries agrees=false, but must exit 1:
+        // nothing was observed, so nothing contradicts the verdict.
+        let inconclusive = compare(false, Inconclusive, "c");
+        assert_eq!(exit_override(&inconclusive), Some(1));
+        let inconclusive_allowed = compare(true, Inconclusive, "c");
+        assert_eq!(exit_override(&inconclusive_allowed), Some(1));
+        // Genuine contradictions exit 8.
+        let leak = compare(false, Connected, "c");
+        assert_eq!(exit_override(&leak), Some(EXIT_PROBE_MISMATCH));
+        let reset = compare(false, Refused, "c");
+        assert_eq!(exit_override(&reset), Some(EXIT_PROBE_MISMATCH));
+        // Everything consistent falls through to the ordinary exits.
+        for (allowed, observed) in [
+            (true, Connected),
+            (true, Refused),
+            (true, TimedOut),
+            (true, Failed),
+            (false, TimedOut),
+            (false, Failed),
+        ] {
+            assert_eq!(
+                exit_override(&compare(allowed, observed, "c")),
+                None,
+                "allowed={allowed} observed={observed:?}"
+            );
+        }
     }
 }
