@@ -179,9 +179,6 @@ impl From<ProtocolArg> for Protocol {
 /// error exit code so scripts can tell "blocked" from "could not evaluate".
 const EXIT_BLOCKED: i32 = 6;
 
-/// Exit status of `can-reach --probe` when the observed result contradicts
-/// the policy verdict.
-
 /// Exit status of `diagnose --fail-on` when a finding meets the threshold.
 const EXIT_FINDINGS: i32 = 7;
 
