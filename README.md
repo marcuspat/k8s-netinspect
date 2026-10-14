@@ -8,7 +8,7 @@ Kubernetes network diagnostics from the command line: it tells you what is broke
 
 *The recording shows v0.1.1; `diagnose` now also lists findings (see the examples below).*
 
-> **Verification status.** Every analysis in this tool is tested offline against recorded cluster snapshots (`tests/fixtures/`, 121 tests). **Nothing in 0.2 has been run against a live cluster yet** — collection from the API, `--watch` on a live cluster and `--probe` compile but are unverified in the field. `scripts/live-smoke.sh` is a read-only script for doing that first run.
+> **Verification status.** Every analysis is tested offline against recorded cluster snapshots (`tests/fixtures/`, 122 tests). The 0.2 live path — collection, `diagnose`, `snapshot`, `can-reach` (with `--suggest` and `--probe`), `--watch`, the RBAC pre-flight and its graceful-skip behaviour — was exercised against a live kind cluster (v1.37, kindnet) on 2026-10-14; that round caught and fixed a probe classification defect (see [CHANGELOG.md](CHANGELOG.md)). Still unverified: clusters with Cilium/Calico/Gateway-API CRDs, a real MCP client, schema-validated SARIF — details in [docs/SOTA_ROADMAP.md](docs/SOTA_ROADMAP.md). `scripts/live-smoke.sh` is a read-only script for running it against your own cluster.
 
 ## What it checks
 
@@ -36,7 +36,7 @@ cargo build --release          # Rust 1.89+
 ./target/release/k8s-netinspect --help
 ```
 
-`cargo install k8s-netinspect` installs the last published release (0.1.1), which predates everything described here.
+`cargo install k8s-netinspect` installs the last release published to crates.io, which can lag this repository — build from source for the newest fixes.
 
 ## Commands
 
@@ -146,14 +146,22 @@ k8s-netinspect can-reach --from shop/web --to shop/db --port 5432 --probe \
   --probe-image registry.internal/tools/busybox:1.36 --probe-timeout 3
 ```
 
-Runs one TCP connect from inside the source pod's network namespace and compares the result with the policy verdict.
+Runs one TCP connect from inside the source pod's network namespace and compares the result with the policy verdict. Verified on a live kind cluster (v1.37); what it can and cannot tell you:
 
-> **Untested against a live cluster.** The container spec, result classification and comparison are unit-tested; the code that patches the pod and reads the result has never run on a real cluster.
+| Probe observed | Meaning |
+|----------------|---------|
+| `connected` | Handshake completed. Under a blocking verdict this is a contradiction (exit 8): the policy is not being enforced. |
+| `timed out` | No answer — dropped somewhere. Consistent with a blocking verdict; under an allowing one it points beyond the evaluated policies (mesh, host/cloud firewall, CNI). |
+| `connection refused` | The path is open but nothing listens on that port. Under a blocking verdict this is a contradiction (exit 8). |
+| `failed to connect` | The connect failed but `nc` said nothing usable about how — busybox `nc` is silent on `-w` timeouts and prints diagnostics to stderr, which the log read does not always surface. Reported honestly instead of guessed. |
+| `inconclusive` | The probe itself did not run usefully (image without `nc`, container failed to start); exit 1, nothing concluded. |
+
+A failed connect is never reported as contradicting an allowing verdict — "allowed" never meant the connection would succeed.
 
 Read this before using it:
 
 - It **modifies the source pod**: an ephemeral container (`netinspect-probe-<timestamp>`) is added, as `kubectl debug` does. It exits after one connect but stays listed in the pod spec until the pod is deleted.
-- It needs `patch` on `pods/ephemeralcontainers` in the source namespace, and the cluster must be able to pull the image (`busybox:1.36` by default; any image with `nc`).
+- It needs `patch` on `pods/ephemeralcontainers` in the source namespace, and the cluster must be able to pull the image (`busybox:1.36` by default; any image whose `nc` accepts `-z -w` the way busybox's does — a variant without `-z`, such as `ncat`, cannot connect and should report `inconclusive`).
 - The container is unprivileged — all capabilities dropped, no privilege escalation — and runs a fixed argv (`nc -z -w <timeout> <ip> <port>`), not a shell string.
 - TCP only; needs a live cluster.
 
@@ -240,20 +248,20 @@ An HTTP GET to the pod's IP on port 80 **from the machine running the CLI**. Out
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Runtime error |
+| `1` | Runtime error (including a probe that could not produce a usable result) |
 | `2` | Bad input or configuration |
 | `3` | Cannot connect to the cluster |
 | `4` | Resource not found, or a `test-pod` connectivity failure |
-| `5` | Permission denied |
+| `5` | Permission denied (missing a required permission listed below) |
 | `6` | `can-reach`: the flow is blocked |
 | `7` | `--fail-on` threshold met (`diagnose`, `diff`) |
-| `8` | `can-reach --probe`: the observed result contradicts the policy verdict |
+| `8` | `can-reach --probe`: the observed result contradicts the policy verdict — the flow is blocked, yet the probe connected or was refused (the policy is not being enforced) |
 
 ## Access it needs
 
 - **Connection:** `KUBECONFIG` (a path list, as kubectl), then `~/.kube/config`, then the in-cluster service account when run in a pod.
-- **Required:** `get` / `list` on nodes, pods and namespaces.
-- **For full coverage:** `list` on services, endpointslices, networkpolicies, ingresses, ingressclasses, daemonsets, deployments (kube-system), the Gateway API (`gateways`, `httproutes`, `referencegrants`), `adminnetworkpolicies` / `baselineadminnetworkpolicies`, Cilium and Calico policy CRDs, and `get` on the five ConfigMaps listed above. Anything missing is reported as a skipped check.
+- **Required (the run aborts with exit 5 without these):** `get` / `list` on nodes, pods, services, endpoints and namespaces. The pre-flight probes namespaced access in the `default` namespace, so cluster-wide access (or at least access to `default`) is needed even when diagnosing another namespace.
+- **For full coverage:** `list` on endpointslices, networkpolicies, ingresses, ingressclasses, daemonsets, deployments (kube-system), the Gateway API (`gateways`, `httproutes`, `referencegrants`), `adminnetworkpolicies` / `baselineadminnetworkpolicies`, Cilium and Calico policy CRDs, and `get` on the five ConfigMaps listed above. Anything missing is reported as a skipped check, never as healthy.
 - **Only for `--probe`:** `patch` on `pods/ephemeralcontainers`.
 
 Set `NO_COLOR=1` to disable colours.

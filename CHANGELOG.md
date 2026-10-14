@@ -1,9 +1,50 @@
 # Changelog
 
-## 0.2.0 — unreleased
+## 0.2.1 — unreleased
 
-Not published to crates.io. Everything below is tested offline against
-recorded snapshots; none of it has been run against a live cluster yet.
+First round of live-cluster feedback (kind v1.37, 2026-10-14). No new
+features; one behavioural fix and documentation corrected to match reality.
+
+**Script authors note — probe exit codes and JSON `agrees` changed:**
+
+- Blocked flow with a silent failed connect: was `inconclusive`,
+  `agrees: false`, exit 8; now `failed`, `agrees: true`, exit 6.
+- Allowed flow, `timed out`: was exit 8, `agrees: false`; now exit 0,
+  `agrees: true`.
+- Allowed flow, new `failed` observation: exit 0, `agrees: true`.
+- `inconclusive`: exit 1 (was 8).
+- Exit 8 now means only one thing: the flow is blocked yet the probe
+  connected or was refused — the policy is not being enforced.
+
+### Fixed
+
+- `can-reach --probe` classified only *successful* connects. busybox `nc`
+  often fails silently (`-w` timeouts print nothing; diagnostics go to
+  stderr, which the log read does not always surface), so every failed
+  connect landed in `inconclusive` and exited 8 claiming a mismatch it
+  could not see — the most valuable case, confirming a block, was the
+  broken one. Classification is now exit-code-first: a non-zero exit
+  without recognisable output is `failed` (connect failed, flavour
+  unknown). Exit 8 is reserved for genuine contradictions (flow blocked,
+  yet connected or refused); a failed connect under an allowing verdict is
+  reported as consistent — "allowed" never promised the connection would
+  succeed — with where to look instead; an inconclusive probe exits 1.
+
+### Documentation
+
+- `cargo install` line was stale: crates.io already serves 0.2.0
+  (published 2026-10-09), not 0.1.1.
+- "Access it needs" understated the hard requirements: services and
+  endpoints are also mandatory (exit 5 without them), and the pre-flight
+  probes namespaced access in `default`.
+- Verification status reflects the 2026-10-14 live round; the probe
+  section documents what each observation means instead of claiming the
+  code has never run on a real cluster.
+
+## 0.2.0 — 2026-10-09
+
+Everything below is tested offline against recorded snapshots; the live
+path was exercised after release (see 0.2.1 and `docs/SOTA_ROADMAP.md`).
 
 ### Changed
 

@@ -161,19 +161,22 @@ Tests: 14 on `main` → 121. Rules: 43.
 - reqwest 0.13 (L13): stayed on 0.12.
 - CI: not re-added, per the owner's earlier decision.
 
-**Untested against a live cluster — everything that touches the API**
+**Live-cluster verification — done 2026-10-14, on kind v1.37 (kindnet)**
 
-- `ClusterSnapshot::collect`, including every dynamic-client list (Gateway
-  API, admin policies, Cilium, Calico) and the 404-means-not-installed path.
-- `diagnose`, `snapshot`, `can-reach` and `mcp` without `--from-snapshot`.
-- `can-reach --probe`: patching the pod, polling, reading logs.
-- `diagnose --watch` in live mode.
-- The kube 0.87 → 4.2 upgrade, beyond compiling and passing fixtures.
+Verified live: `ClusterSnapshot::collect` (core resources; the CRD lists
+took their not-installed path, since kind has no Gateway API or Cilium/
+Calico CRDs), `diagnose`, `snapshot`, `can-reach` (allowed/blocked/suggest),
+`can-reach --probe` (patching, polling, log reading; the suggested
+NetworkPolicy was applied and flipped the verdict, and the probe connected
+through it), `diagnose --watch`, the RBAC pre-flight and the graceful
+skip path. That round also found and fixed the probe's failure
+classification (see the 2026-10-14 log entry).
 
-Also unverified: SARIF against the official schema, the Prometheus output
-against a real scraper, the MCP server against a real client, the musl
-cross-build after the dependency upgrade, and AdminNetworkPolicy semantics
-against a conformance suite.
+Still unverified: clusters with Cilium/Calico/Gateway-API CRDs installed,
+`mcp` against a real MCP client (protocol-level stdio session verified),
+SARIF against the official schema, the Prometheus output against a real
+scraper, the musl cross-build after the dependency upgrade, and
+AdminNetworkPolicy semantics against a conformance suite.
 
 **Known detection gaps**
 
@@ -293,3 +296,20 @@ against a conformance suite.
   fixtures (a test keeps them in sync), `CHANGELOG.md`,
   `docs/ARCHITECTURE.md`, stale shell scripts replaced by
   `scripts/live-smoke.sh`, version `0.2.0`. 121 tests. Round complete.
+- 2026-10-14 — First live-cluster round (kind v1.37, kindnet), which
+  closed most of the "Untested against a live cluster" gap above and
+  found one real defect: `--probe` classified only *successful* connects,
+  because busybox `nc` failures often carry no log text (silent on `-w`
+  timeouts; diagnostics on stderr) and `classify(1, "")` fell through to
+  `Inconclusive` — so the most valuable case, confirming a block, exited 8
+  claiming a mismatch it could not actually see. Fixed: classification is
+  exit-code-first with a new `failed` observation (connect failed, flavour
+  unknown); exit 8 is now reserved for genuine contradictions (blocked
+  flow, yet connected/reset); a failed connect under an allowing verdict is
+  reported as "not a contradiction — look beyond policy", matching the
+  README's own definition of "allowed"; an inconclusive probe exits 1.
+  Also: the README's install section said `cargo install` gets 0.1.1 while
+  crates.io already serves 0.2.0; and "Access it needs" understated the
+  pre-flight's hard requirements (services and endpoints are also
+  mandatory, and namespaced checks are probed in `default`). Docs
+  corrected alongside.

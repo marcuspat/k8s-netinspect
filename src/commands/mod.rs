@@ -528,6 +528,7 @@ fn render_reach(report: &ReachReport) -> String {
             Observation::Connected => "connected",
             Observation::Refused => "connection refused",
             Observation::TimedOut => "timed out",
+            Observation::Failed => "failed to connect",
             Observation::Inconclusive => "inconclusive",
         };
         let mark = if p.agrees {
