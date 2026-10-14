@@ -112,16 +112,18 @@ pub fn container_name(suffix: u64) -> String {
 /// Interpret the probe container's exit code and output.
 ///
 /// Exit-code first: `nc` exiting 0 means the handshake completed, and an
-/// exit of 1 means the connect failed. Log text refines *how* it failed
-/// when there is any (`refused` vs a drop); busybox `nc` is silent on
-/// `-w` timeouts and writes diagnostics to stderr, which the log read does
-/// not always surface, so an unexplained exit 1 is
-/// [`Observation::Failed`] — a real failure, flavour unknown. Every other
-/// exit code means `nc` never completed a connect we can interpret —
-/// command not found (127) or not executable (126), a signal kill such as
-/// 137/143, an OOM, an unexpected usage error — and stays
-/// [`Observation::Inconclusive`]; claiming a failure there could falsely
-/// "confirm" a block the probe never tested.
+/// exit of 1 covers both a failed connect and — on some netcat variants —
+/// a usage error (notably `ncat`, which has no `-z`). Usage complaints are
+/// recognised by their log text (`usage:`, `invalid option`, …) and stay
+/// [`Observation::Inconclusive`]; so do all other exit codes (126/127,
+/// signal kills such as 137/143): `nc` never completed a connect, and
+/// claiming a failure could falsely "confirm" a block. Log text also
+/// refines *how* a real connect failed (`refused` vs a drop); busybox
+/// `nc` is silent on `-w` timeouts and writes diagnostics to stderr,
+/// which the log read does not always surface, so an unexplained exit 1
+/// is [`Observation::Failed`] — a real failure, flavour unknown. The
+/// residual ambiguity (a variant whose usage error is silent) is why
+/// `--probe-image` should provide a busybox-compatible `nc`.
 pub fn classify(exit_code: i32, logs: &str) -> Observation {
     if exit_code == 0 {
         return Observation::Connected;
@@ -132,6 +134,15 @@ pub fn classify(exit_code: i32, logs: &str) -> Observation {
         return Observation::Inconclusive;
     }
     let logs = logs.to_lowercase();
+    if logs.contains("usage")
+        || logs.contains("invalid option")
+        || logs.contains("unknown option")
+        || logs.contains("unrecognized")
+    {
+        // `nc` complained about its arguments instead of connecting — the
+        // image's netcat does not accept our argv (e.g. ncat has no -z).
+        return Observation::Inconclusive;
+    }
     if logs.contains("refused") {
         Observation::Refused
     } else if logs.contains("timed out") || logs.contains("timeout") {
@@ -371,6 +382,16 @@ mod tests {
         assert_eq!(classify(137, ""), Observation::Inconclusive);
         assert_eq!(classify(143, "whatever"), Observation::Inconclusive);
         assert_eq!(classify(2, ""), Observation::Inconclusive);
+        // A usage error also exits 1 on some netcats (ncat has no -z); it
+        // must not read as a failed connect.
+        assert_eq!(
+            classify(1, "usage: nc [-46bCDdhklnrStUuvZz] [-I length] ..."),
+            Observation::Inconclusive
+        );
+        assert_eq!(
+            classify(1, "nc: invalid option -- 'z'"),
+            Observation::Inconclusive
+        );
         // The live-cluster case that drove this shape: busybox nc times out
         // silently, so a failed connect often carries no log text at all.
         assert_eq!(classify(1, ""), Observation::Failed);

@@ -161,7 +161,7 @@ A failed connect is never reported as contradicting an allowing verdict — "all
 Read this before using it:
 
 - It **modifies the source pod**: an ephemeral container (`netinspect-probe-<timestamp>`) is added, as `kubectl debug` does. It exits after one connect but stays listed in the pod spec until the pod is deleted.
-- It needs `patch` on `pods/ephemeralcontainers` in the source namespace, and the cluster must be able to pull the image (`busybox:1.36` by default; any image with `nc`).
+- It needs `patch` on `pods/ephemeralcontainers` in the source namespace, and the cluster must be able to pull the image (`busybox:1.36` by default; any image whose `nc` accepts `-z -w` the way busybox's does — `ncat`, which has no `-z`, will only ever produce `inconclusive`).
 - The container is unprivileged — all capabilities dropped, no privilege escalation — and runs a fixed argv (`nc -z -w <timeout> <ip> <port>`), not a shell string.
 - TCP only; needs a live cluster.
 

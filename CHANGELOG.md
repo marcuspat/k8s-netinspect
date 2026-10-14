@@ -5,6 +5,13 @@
 First round of live-cluster feedback (kind v1.37, 2026-10-14). No new
 features; one behavioural fix and documentation corrected to match reality.
 
+**Script authors note — exit codes and JSON semantics changed for probe
+results under an *allowing* verdict:** a `timed_out` or `failed` connect
+no longer exits 8 with `agrees: false`; it exits 0 (or 6 when the flow is
+blocked and the failure is consistent) with `agrees: true`. Exit 8 now
+means only one thing: the flow is blocked yet the probe connected or was
+refused (the policy is not being enforced). An inconclusive probe exits 1.
+
 ### Fixed
 
 - `can-reach --probe` classified only *successful* connects. busybox `nc`
