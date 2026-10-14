@@ -9,8 +9,13 @@
 //!
 //! The pieces that decide things — the container spec, how a result is
 //! classified, how it compares with the prediction — are pure and tested.
-//! [`run`] is the only part that talks to a cluster, and it has **not been
-//! exercised against a live cluster**.
+//! [`run`] talks to the cluster: it has been exercised against a live kind
+//! cluster (v1.37, 2026-10-14) — patching, polling, log reading and the
+//! success path end to end. What that run surfaced is folded into
+//! [`classify`]: `nc` failures are often *silent* (busybox `nc` times out
+//! with no output, and its diagnostics go to stderr), so classification is
+//! exit-code-first and a non-zero exit without recognisable output is a
+//! [`Observation::Failed`], not an error.
 
 use k8s_openapi::api::core::v1::{Capabilities, EphemeralContainer, Pod, SecurityContext};
 use kube::api::{LogParams, Patch, PatchParams};
@@ -47,6 +52,13 @@ pub enum Observation {
     Refused,
     /// No answer: packets are being dropped somewhere.
     TimedOut,
+    /// The connect failed but `nc` said nothing usable about how (busybox
+    /// `nc` is silent on `-w` timeouts and prints its diagnostics to
+    /// stderr, which the log read does not always surface). A failure with
+    /// an unknown flavour: it is consistent with a blocking policy, and
+    /// under an allowing one it means "nothing listening, or dropped
+    /// beyond the evaluated policies".
+    Failed,
     /// The probe did not produce a usable result.
     Inconclusive,
 }
@@ -98,6 +110,15 @@ pub fn container_name(suffix: u64) -> String {
 }
 
 /// Interpret the probe container's exit code and output.
+///
+/// Exit-code first: `nc` exiting 0 means the handshake completed, and any
+/// other exit means the connect failed. Log text refines *how* it failed
+/// when there is any (`refused` vs a drop); busybox `nc` is silent on
+/// `-w` timeouts and writes diagnostics to stderr, which the log read does
+/// not always surface, so an unexplained non-zero exit is
+/// [`Observation::Failed`] — a real failure, flavour unknown — not an
+/// unusable result. Only exits that mean "nc never ran" (`127` command
+/// not found, `126` not executable) stay [`Observation::Inconclusive`].
 pub fn classify(exit_code: i32, logs: &str) -> Observation {
     if exit_code == 0 {
         return Observation::Connected;
@@ -110,13 +131,24 @@ pub fn classify(exit_code: i32, logs: &str) -> Observation {
     } else if logs.contains("unreachable") || logs.contains("no route") {
         // ICMP unreachable is still "the packet did not get there".
         Observation::TimedOut
-    } else {
-        // e.g. `nc` missing from the image (exit 127), bad arguments.
+    } else if exit_code == 126 || exit_code == 127 {
+        // The container ran but `nc` did not: image without `nc`.
         Observation::Inconclusive
+    } else {
+        // `nc` ran and the connect failed, with nothing usable about how.
+        Observation::Failed
     }
 }
 
 /// Compare what policy predicted with what the probe observed.
+///
+/// `agrees` means "consistent with the policy verdict". The verdict is about
+/// policy, never a promise the connection succeeds, so a *failed* connect
+/// under an allowing verdict is not a contradiction — it is reported with
+/// where else to look. Exit 8 (the caller's mismatch) is reserved for the
+/// genuine contradictions: policy blocks the flow, yet the connect succeeds
+/// or the destination answers. `Inconclusive` never claims agreement; the
+/// caller gives it its own exit status.
 pub fn compare(predicted_allowed: bool, observed: Observation, container: &str) -> ProbeReport {
     let (agrees, explanation) = match (predicted_allowed, observed) {
         (true, Observation::Connected) => (true, "Connected, as policy predicts."),
@@ -130,10 +162,24 @@ pub fn compare(predicted_allowed: bool, observed: Observation, container: &str) 
              listening on that port.",
         ),
         (true, Observation::TimedOut) => (
-            false,
-            "Policy allows this flow but packets are dropped. Look beyond the evaluated \
-             policies: a CNI-native policy, a service mesh, a host or cloud firewall, a broken \
-             CNI on either node, or the destination not listening behind a dropping firewall.",
+            true,
+            "Policy allows this flow, but packets are dropped — 'allowed' never meant the \
+             connection would succeed. Look beyond the evaluated policies: a CNI-native \
+             policy, a service mesh, a host or cloud firewall, a broken CNI on either node, \
+             or the destination not listening behind a dropping firewall.",
+        ),
+        (true, Observation::Failed) => (
+            true,
+            "Policy allows this flow, but the connect failed (the probe could not tell a \
+             closed port from a drop). Either nothing is listening on that port, or packets \
+             are dropped beyond the evaluated policies — the same places to look as for a \
+             timeout.",
+        ),
+        (false, Observation::Failed) => (
+            true,
+            "The connect failed, consistent with the policy that blocks this flow. The probe \
+             could not tell a drop from a reset; a reset here would mean the policy is not \
+             being enforced — if you suspect that, re-run with a longer --probe-timeout.",
         ),
         (false, Observation::Connected) => (
             false,
@@ -293,7 +339,11 @@ mod tests {
             classify(127, "exec: \"nc\": executable file not found in $PATH"),
             Observation::Inconclusive
         );
-        assert_eq!(classify(1, ""), Observation::Inconclusive);
+        assert_eq!(classify(126, ""), Observation::Inconclusive);
+        // The live-cluster case that drove this shape: busybox nc times out
+        // silently, so a failed connect often carries no log text at all.
+        assert_eq!(classify(1, ""), Observation::Failed);
+        assert_eq!(classify(1, "some unrecognised noise"), Observation::Failed);
     }
 
     #[test]
@@ -306,7 +356,13 @@ mod tests {
             agrees(true, Refused),
             "open path, closed port is not a policy mismatch"
         );
-        assert!(!agrees(true, TimedOut));
+        // A failed connect never contradicts an allowing verdict: 'allowed'
+        // never promised the connection would succeed.
+        assert!(agrees(true, TimedOut));
+        assert!(agrees(true, Failed));
+        // ...nor a blocking one, when the failure flavour is unknown.
+        assert!(agrees(false, Failed));
+        // The genuine contradictions: policy blocks, yet packets get through.
         assert!(!agrees(false, Connected));
         assert!(!agrees(false, Refused));
         assert!(!agrees(true, Inconclusive));
@@ -317,12 +373,19 @@ mod tests {
         assert_eq!(leak.container, "netinspect-probe-1");
         let drop = compare(true, TimedOut, "c");
         assert!(drop.explanation.contains("CNI-native policy"));
+        let unknown = compare(true, Failed, "c");
+        assert!(unknown.explanation.contains("nothing is listening"));
     }
 
     #[test]
     fn report_serializes_with_stable_names() {
-        let v = serde_json::to_value(compare(true, Observation::TimedOut, "c")).unwrap();
-        assert_eq!(v["observed"], "timed_out");
-        assert_eq!(v["agrees"], false);
+        let drop = serde_json::to_value(compare(true, Observation::TimedOut, "c")).unwrap();
+        assert_eq!(drop["observed"], "timed_out");
+        assert_eq!(drop["agrees"], true);
+        let leak = serde_json::to_value(compare(false, Observation::Connected, "c")).unwrap();
+        assert_eq!(leak["observed"], "connected");
+        assert_eq!(leak["agrees"], false);
+        let unknown = serde_json::to_value(compare(true, Observation::Failed, "c")).unwrap();
+        assert_eq!(unknown["observed"], "failed");
     }
 }

@@ -317,8 +317,15 @@ async fn run(command: &Commands) -> NetInspectResult<()> {
                 suggest: *suggest,
             };
             let report = commands::can_reach(source, &query).await?;
-            if report.probe.as_ref().is_some_and(|p| !p.agrees) {
-                process::exit(EXIT_PROBE_MISMATCH);
+            if let Some(p) = report.probe.as_ref() {
+                if p.observed == probe::Observation::Inconclusive {
+                    // Nothing was observed, so nothing can contradict the
+                    // verdict; a probe that could not run is a runtime error.
+                    process::exit(1);
+                }
+                if !p.agrees {
+                    process::exit(EXIT_PROBE_MISMATCH);
+                }
             }
             if !report.verdict.allowed {
                 process::exit(EXIT_BLOCKED);
