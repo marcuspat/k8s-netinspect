@@ -5,12 +5,16 @@
 First round of live-cluster feedback (kind v1.37, 2026-10-14). No new
 features; one behavioural fix and documentation corrected to match reality.
 
-**Script authors note — exit codes and JSON semantics changed for probe
-results under an *allowing* verdict:** a `timed_out` or `failed` connect
-no longer exits 8 with `agrees: false`; it exits 0 (or 6 when the flow is
-blocked and the failure is consistent) with `agrees: true`. Exit 8 now
-means only one thing: the flow is blocked yet the probe connected or was
-refused (the policy is not being enforced). An inconclusive probe exits 1.
+**Script authors note — probe exit codes and JSON `agrees` changed:**
+
+- Blocked flow with a silent failed connect: was `inconclusive`,
+  `agrees: false`, exit 8; now `failed`, `agrees: true`, exit 6.
+- Allowed flow, `timed out`: was exit 8, `agrees: false`; now exit 0,
+  `agrees: true`.
+- Allowed flow, new `failed` observation: exit 0, `agrees: true`.
+- `inconclusive`: exit 1 (was 8).
+- Exit 8 now means only one thing: the flow is blocked yet the probe
+  connected or was refused — the policy is not being enforced.
 
 ### Fixed
 
