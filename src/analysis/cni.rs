@@ -23,6 +23,10 @@ struct Signature {
 
 /// Order matters only for display. Canal is listed before Calico/Flannel
 /// because it ships both images.
+///
+/// The count itself is a documented claim ("16 recognised CNIs" in the
+/// README, "16 plugins" in docs/SOTA_ROADMAP.md); it is enforced by
+/// `signature_count_matches_documented_claim` in the tests below.
 const SIGNATURES: &[Signature] = &[
     Signature {
         name: "Cilium",
@@ -360,6 +364,44 @@ fn tag_of(image: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The documented CNI count ("16 recognised CNIs") must stay true and
+    /// unambiguous: 16 signatures, each with a distinct name and at least one
+    /// detection vector, and no DaemonSet name claimed by two signatures.
+    #[test]
+    fn signature_count_matches_documented_claim() {
+        assert_eq!(
+            SIGNATURES.len(),
+            16,
+            "signature count drifted from the documented claim; update \
+             README.md and docs/SOTA_ROADMAP.md together with this list"
+        );
+
+        let mut names: Vec<&str> = SIGNATURES.iter().map(|s| s.name).collect();
+        let before = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), before, "signature names must be distinct");
+
+        for s in SIGNATURES {
+            assert!(
+                !s.daemon_sets.is_empty()
+                    || !s.images.is_empty()
+                    || !s.node_annotations.is_empty(),
+                "{} has no detection vector",
+                s.name
+            );
+        }
+
+        let mut ds_names: Vec<&str> = SIGNATURES
+            .iter()
+            .flat_map(|s| s.daemon_sets.iter().copied())
+            .collect();
+        let before = ds_names.len();
+        ds_names.sort_unstable();
+        ds_names.dedup();
+        assert_eq!(ds_names.len(), before, "duplicate DaemonSet names across signatures");
+    }
 
     #[test]
     fn image_parsing_handles_registry_ports_and_digests() {

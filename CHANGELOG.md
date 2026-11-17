@@ -40,6 +40,10 @@ features; one behavioural fix and documentation corrected to match reality.
 - Verification status reflects the 2026-10-14 live round; the probe
   section documents what each observation means instead of claiming the
   code has never run on a real cluster.
+- The "16 recognised CNIs" claim is now enforced, not just stated: a unit
+  test asserts the signature list has exactly 16 entries with distinct
+  names, one detection vector each, and no DaemonSet name shared between
+  signatures, so the documented count cannot drift from the code.
 
 ## 0.2.0 — 2026-10-09
 
