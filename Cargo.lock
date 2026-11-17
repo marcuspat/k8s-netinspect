@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "k8s-netinspect"
-version = "0.2.1"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
